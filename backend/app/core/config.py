@@ -46,7 +46,9 @@ class Settings:
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-    # Vector Embeddings
+    # Vector Embeddings & LLM
     VECTOR_DIMENSION: int = int(os.getenv("VECTOR_DIMENSION", "768"))
+    GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY", None)
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
 settings = Settings()

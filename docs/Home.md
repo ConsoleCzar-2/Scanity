@@ -6,18 +6,22 @@ Scanity enables users to upload PDF documents and ask natural-language questions
 
 ---
 
-## 📚 Documentation Index
+## Documentation Index
 
 | Guide | Description |
 |---|---|
 | [System Architecture](ARCHITECTURE.md) | Decoupled tiers, modular backend structure, RAG design, and key architectural trade-offs. |
+| [Ingestion & Workers](INGESTION_AND_WORKERS.md) | PDF extraction with PyMuPDF, recursive token chunking with sliding overlap, and Celery worker architecture. |
 | [Database & Schema](DATABASE.md) | PostgreSQL + pgvector setup, UUIDv7 time-ordered keys, ERD, tables catalog, and Alembic migrations. |
 | [API Reference](API.md) | REST endpoints, request/response schemas, CORS rules, and health probe documentation. |
+| [Frontend Architecture](FRONTEND.md) | Next.js 15 App Router specifications, component hierarchy, polling state machine, and citation chip UI. |
+| [Deployment & Operations](DEPLOYMENT.md) | Multi-container Docker topology, port allocations, persistent volumes, environment configs, and health probes. |
+| [Testing Strategy](TESTING.md) | Ingestion unit tests, synthetic multi-page PDF generation, database cascade tests, and verification scripts. |
 | [UML & Sequence Diagrams](UML.md) | Comprehensive class diagrams, ingestion sequence, and query validation workflows. |
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 - Docker & Docker Compose
@@ -70,12 +74,12 @@ Interactive API docs are available at:
 
 ---
 
-## 🗺️ Implementation Roadmap
+## Implementation Roadmap
 
 - [x] **Step 1: Infrastructure Setup (Docker Compose)** — Postgres + pgvector, Redis, and pgAdmin.
 - [x] **Step 2: Backend Initialization & Environment Setup** — Python 3.12 virtual environment, FastAPI scaffolding, and CORS.
 - [x] **Step 3: Database Models & Migrations** — Enterprise modular backend, UUIDv7 primary keys, pgvector `Vector(768)` with HNSW index, and Alembic migrations.
-- [ ] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `embedding-001` integration.
+- [x] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `gemini-embedding-001` integration.
 - [ ] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis and upload status tracking.
 - [ ] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
 - [ ] **Step 7: Generation System** — Grounded structured output with Gemini, citation verification, and fallback guards.

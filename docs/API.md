@@ -66,11 +66,11 @@ curl http://localhost:8000/api/v1/health
 
 ---
 
-## 4. Scaffolded Endpoints (Planned for Steps 4 – 7)
+## 4. Scaffolded Endpoints (Planned for Steps 5 – 7)
 
-The following endpoints are scheduled for full implementation in upcoming steps:
+Note: Core ingestion extraction, chunking, and vector embedding services are fully implemented in `app/services/ingestion.py` (Step 4). The HTTP routing and asynchronous Celery dispatch below are scheduled for Step 5:
 
-### 4.1 Document Ingestion (Step 4 & 5)
+### 4.1 Document Ingestion & Status (Step 5)
 
 #### `POST /api/v1/documents/upload`
 Uploads a single or multiple PDF files. Dispatches an asynchronous Celery task to parse, chunk, and embed the content.

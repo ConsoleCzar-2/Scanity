@@ -35,7 +35,7 @@ flowchart TB
     end
 
     subgraph ExternalServices [External Foundation Models]
-        GeminiEmbed[Google Gemini Embedding API<br/>embedding-001 / text-embedding-004]
+        GeminiEmbed[Google Gemini Embedding API<br/>gemini-embedding-001]
         GeminiLLM[Google Gemini Generation API<br/>gemini-3.5-flash-lite]
     end
 
@@ -131,10 +131,12 @@ backend/
 ## 4. Grounded RAG Pipeline Design
 
 ### 4.1 Ingestion Pipeline
+*(See [Document Ingestion & Workers](INGESTION_AND_WORKERS.md) for complete algorithmic details and benchmarks.)*
+
 1. **Upload & Staging:** PDF received via `POST /api/v1/documents/upload`. Stored on disk (`/uploads`) and recorded in `documents` with status `pending`.
 2. **Asynchronous Dispatch:** An ingestion task is enqueued to Redis via `process_pdf_task.delay(document_id, file_path)`.
 3. **Extraction & Chunking:** PyMuPDF extracts text per page. The text is chunked to ~700 tokens with 100-token overlap, preserving `page_number` and `chunk_index`.
-4. **Vector Embedding:** Chunks are sent in batches to Google Gemini (`embedding-001` / `text-embedding-004`), producing 768-dimensional vectors.
+4. **Vector Embedding:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors.
 5. **Persistence & Indexing:** Chunks and embeddings are stored in `document_chunks`. The HNSW index enables sub-10ms nearest-neighbor retrieval. Status updates to `ready`.
 
 ### 4.2 Query & Guardrail Pipeline

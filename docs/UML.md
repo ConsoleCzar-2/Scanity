@@ -170,7 +170,7 @@ sequenceDiagram
     Worker->>DB: UPDATE documents SET status='processing'
     Worker->>Worker: Extract text per page with PyMuPDF
     Worker->>Worker: Split text into ~700-token chunks with 100-token overlap
-    Worker->>Gemini: POST /models/embedding-001 (batch text chunks)
+    Worker->>Gemini: POST /models/gemini-embedding-001 (batch text chunks)
     Gemini-->>Worker: Return 768-dimensional float arrays
     Worker->>DB: Batch INSERT into document_chunks (UUIDv7, vectors, page_numbers)
     Worker->>DB: UPDATE documents SET status='ready', total_chunks=N
