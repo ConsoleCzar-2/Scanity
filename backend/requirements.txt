@@ -10,3 +10,4 @@ pymupdf
 google-genai
 python-multipart
 python-dotenv
+uuid6
