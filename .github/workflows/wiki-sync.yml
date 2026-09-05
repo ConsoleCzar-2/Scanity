@@ -1,0 +1,34 @@
+name: Sync Docs to Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+jobs:
+  sync-wiki:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to push to the wiki repository
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Sync docs to Wiki
+        uses: Andrew-Chen-Wang/github-wiki-action@v4
+        with:
+          path: docs
+          # The action expects the markdown files to be placed in the "path" directory. 
+          # We're telling it to look in the "docs" directory.
+        env:
+          # A Personal Access Token (PAT) is strongly recommended over GITHUB_TOKEN
+          # if your organization/repo prevents default tokens from pushing to wikis.
+          # If the sync fails with a 403, create a PAT with "repo" scope,
+          # save it as a repository secret named WIKI_SYNC_TOKEN, and uncomment the line below:
+          # GITHUB_TOKEN: ${{ secrets.WIKI_SYNC_TOKEN }}
+          
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

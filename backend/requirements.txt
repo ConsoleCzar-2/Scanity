@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+asyncpg
+alembic
+pgvector
+celery
+redis
+pymupdf
+google-genai
+python-multipart
+python-dotenv

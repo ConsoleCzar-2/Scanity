@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+vendor/
+packages/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.vercel/
+*.min.js
+*.min.css
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+gcp-credentials.json
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.eslintcache
+.stylelintcache
+
+# Misc
+*.tsbuildinfo
+*.pem
+next-env.d.ts
+
+# Python
+.venv/
+backend/venv/   
+__pycache__/
+*.py[cod]
+*.pyc
+*$py.class
+.pytest_cache/
+
+# md files except for readme and docs
+*.md
+!README.md
+!docs/*.md
+
+.agentignore

@@ -1,2 +1,2 @@
 # Scanity
-Scanity: Event-Driven Financial Document Intelligence &amp; RAG System
+Scanity: AI-Powered Document Q&A System
