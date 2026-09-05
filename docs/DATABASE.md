@@ -71,14 +71,20 @@ Stores metadata and lifecycle tracking for uploaded PDF documents.
 | Column | Type | Nullable | Description |
 |---|---|---|---|
 | `id` | `UUID` | No | UUIDv7 primary key (indexed) |
-| `original_filename` | `VARCHAR(255)` | No | User's original uploaded filename |
-| `storage_path` | `VARCHAR(500)` | No | Absolute or relative filesystem storage path |
+| `original_filename` | `VARCHAR(255)` | No | User's original uploaded filename (e.g., `financial_report.pdf`) |
+| `storage_path` | `VARCHAR(500)` | No | Internal storage URI: `uploads/{doc_id}.pdf` (local) or `gs://{bucket}/documents/{doc_id}.pdf` (GCP) |
 | `file_hash` | `VARCHAR(64)` | Yes | SHA-256 hex digest for duplicate upload detection (indexed) |
-| `status` | `VARCHAR(50)` | No | Ingestion state: `pending`, `processing`, `ready`, `failed` (indexed) |
+| `status` | `VARCHAR(50)` | No | Ingestion lifecycle state: `pending`, `processing`, `ready`, `failed` (indexed) |
 | `page_count` | `INTEGER` | Yes | Total pages extracted by PyMuPDF |
 | `total_chunks` | `INTEGER` | Yes | Total chunks generated |
 | `uploaded_at` | `TIMESTAMPTZ` | No | UTC timestamp when document was uploaded |
 | `processed_at` | `TIMESTAMPTZ` | Yes | UTC timestamp when ingestion finished |
+
+#### Document Ingestion State Machine:
+* **`pending`:** File is saved to storage; Celery task has been queued to Redis.
+* **`processing`:** Background Celery worker has dequeued the task and is actively parsing pages, chunking text, or generating Gemini embeddings.
+* **`ready`:** Document chunks and 768-dimensional embeddings are persisted in PostgreSQL; HNSW index is updated and available for queries.
+* **`failed`:** Parsing or processing failed; error details logged and document flagged to avoid infinite polling.
 
 ### 2.2 `document_chunks`
 Stores text segments and high-dimensional vector embeddings extracted from documents.

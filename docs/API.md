@@ -66,49 +66,117 @@ curl http://localhost:8000/api/v1/health
 
 ---
 
-## 4. Scaffolded Endpoints (Planned for Steps 5 – 7)
+### 3.2 Document Upload
+Uploads a PDF file, validates format and size ($\le 25\text{MB}$), generates sequential UUIDv7, saves to storage, creates a database record, and queues background ingestion in Celery.
 
-Note: Core ingestion extraction, chunking, and vector embedding services are fully implemented in `app/services/ingestion.py` (Step 4). The HTTP routing and asynchronous Celery dispatch below are scheduled for Step 5:
+* **Method:** `POST`
+* **Path:** `/api/v1/documents/upload`
+* **Tags:** `Documents`
+* **Content-Type:** `multipart/form-data`
+* **Request:** Form field `file: UploadFile` (PDF format only)
 
-### 4.1 Document Ingestion & Status (Step 5)
-
-#### `POST /api/v1/documents/upload`
-Uploads a single or multiple PDF files. Dispatches an asynchronous Celery task to parse, chunk, and embed the content.
-* **Request:** `multipart/form-data` with `file: UploadFile`
-* **Response (202 Accepted):**
+#### Response (202 Accepted):
 ```json
 {
-  "document_id": "01a071df-5994-70a2-af14-618727cb1a4f",
-  "filename": "quarterly_financials.pdf",
+  "document_id": "01a072bf-568f-78bd-be89-2312cc9d86a3",
+  "original_filename": "q3_financial_report.pdf",
   "status": "pending",
   "message": "Document uploaded successfully. Processing queued."
 }
 ```
 
-#### `GET /api/v1/documents/{id}/status`
-Polls the processing state of an uploaded document.
-* **Path Parameter:** `id: UUID`
-* **Response (200 OK):**
-```json
-{
-  "document_id": "01a071df-5994-70a2-af14-618727cb1a4f",
-  "filename": "quarterly_financials.pdf",
-  "status": "ready",
-  "page_count": 14,
-  "total_chunks": 42,
-  "processed_at": "2026-09-05T14:32:10Z"
-}
+#### Curl Command:
+```powershell
+curl -X POST "http://localhost:8000/api/v1/documents/upload" -F "file=@tests/sample.pdf"
 ```
-
-#### `GET /api/v1/documents`
-Lists all uploaded documents and their current statuses.
-
-#### `DELETE /api/v1/documents/{id}`
-Deletes a document record and cascades the deletion to all associated chunks in `pgvector`.
 
 ---
 
-### 4.2 Semantic Query & Grounded Answer (Step 6 & 7)
+### 3.3 Poll Document Processing Status
+Polls the parsing, chunking, and embedding state of an uploaded document.
+
+* **Method:** `GET`
+* **Path:** `/api/v1/documents/{id}/status`
+* **Tags:** `Documents`
+* **Path Parameter:** `id: UUID` (Document UUIDv7)
+
+#### Response (200 OK — Ready):
+```json
+{
+  "id": "01a072bf-568f-78bd-be89-2312cc9d86a3",
+  "original_filename": "q3_financial_report.pdf",
+  "status": "ready",
+  "page_count": 3,
+  "total_chunks": 3,
+  "uploaded_at": "2026-09-05T18:05:37.848508Z",
+  "processed_at": "2026-09-05T18:05:37.982000Z"
+}
+```
+
+#### Response (200 OK — Processing):
+```json
+{
+  "id": "01a072bf-568f-78bd-be89-2312cc9d86a3",
+  "original_filename": "q3_financial_report.pdf",
+  "status": "processing",
+  "page_count": null,
+  "total_chunks": null,
+  "uploaded_at": "2026-09-05T18:05:37.848508Z",
+  "processed_at": null
+}
+```
+
+---
+
+### 3.4 List Uploaded Documents
+Returns a paginated list of all uploaded documents ordered chronologically by upload timestamp descending.
+
+* **Method:** `GET`
+* **Path:** `/api/v1/documents`
+* **Tags:** `Documents`
+* **Query Parameters:** `skip: int = 0`, `limit: int = 50`
+
+#### Response (200 OK):
+```json
+{
+  "total": 1,
+  "documents": [
+    {
+      "id": "01a072bf-568f-78bd-be89-2312cc9d86a3",
+      "original_filename": "q3_financial_report.pdf",
+      "status": "ready",
+      "page_count": 3,
+      "total_chunks": 3,
+      "uploaded_at": "2026-09-05T18:05:37.848508Z",
+      "processed_at": "2026-09-05T18:05:37.982000Z"
+    }
+  ]
+}
+```
+
+---
+
+### 3.5 Delete Document
+Deletes a document from the database (atomically cascading deletion to all chunks and 768-dim vector embeddings in PostgreSQL) and removes the physical file from storage.
+
+* **Method:** `DELETE`
+* **Path:** `/api/v1/documents/{id}`
+* **Tags:** `Documents`
+* **Path Parameter:** `id: UUID`
+
+#### Response (200 OK):
+```json
+{
+  "status": "ok",
+  "message": "Document 'q3_financial_report.pdf' and all associated vector embeddings deleted successfully."
+}
+```
+
+---
+
+## 4. Scaffolded Endpoints (Planned for Steps 6 – 7)
+
+### 4.1 Semantic Query & Grounded Answer (Step 6 & 7)
 
 #### `POST /api/v1/query`
 Answers natural language questions strictly grounded in the uploaded documents.

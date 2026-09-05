@@ -42,3 +42,30 @@ class DocumentResponse(BaseModel):
     total_chunks: Optional[int] = None
     uploaded_at: datetime
     processed_at: Optional[datetime] = None
+
+
+class DocumentUploadResponse(BaseModel):
+    """Response returned upon successful file upload and task queuing."""
+    document_id: uuid.UUID
+    original_filename: str
+    status: str
+    message: str
+
+
+class DocumentStatusResponse(BaseModel):
+    """Detailed document status response for polling."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    original_filename: str
+    status: str
+    page_count: Optional[int] = None
+    total_chunks: Optional[int] = None
+    uploaded_at: datetime
+    processed_at: Optional[datetime] = None
+
+
+class DocumentListResponse(BaseModel):
+    """Response schema for listing uploaded documents."""
+    total: int
+    documents: List[DocumentResponse]

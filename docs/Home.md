@@ -80,7 +80,7 @@ Interactive API docs are available at:
 - [x] **Step 2: Backend Initialization & Environment Setup** — Python 3.12 virtual environment, FastAPI scaffolding, and CORS.
 - [x] **Step 3: Database Models & Migrations** — Enterprise modular backend, UUIDv7 primary keys, pgvector `Vector(768)` with HNSW index, and Alembic migrations.
 - [x] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `gemini-embedding-001` integration.
-- [ ] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis and upload status tracking.
+- [x] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis, cloud-ready storage abstraction, and upload status tracking.
 - [ ] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
 - [ ] **Step 7: Generation System** — Grounded structured output with Gemini, citation verification, and fallback guards.
 - [ ] **Step 8: Frontend Initialization** — Next.js 15 App Router, TypeScript, and Tailwind CSS.

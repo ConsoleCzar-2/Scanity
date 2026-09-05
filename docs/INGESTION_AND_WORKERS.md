@@ -90,37 +90,64 @@ print(f"Generated {result.total_chunks} embedded chunks.")
 
 ## 4. Background Workers (Celery + Redis Architecture)
 
-> Note: The ingestion core parsing, chunking, and embedding logic in Section 2 is fully implemented (Step 4). The Celery worker dispatch, task definitions (`app/workers/tasks.py`), and Redis queue integration below represent the target architecture scheduled for **Step 5 (Celery Worker Integration)**. This section will be updated with live execution details, task IDs, and polling results once Step 5 is implemented.
+*(Fully Implemented & Verified in Step 5)*
+
+Scanity processes high-volume PDF parsing and vector embeddings asynchronously via Celery and Redis to prevent blocking the FastAPI web server.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Client as Client / Frontend
-    participant API as FastAPI (Web Tier)
+    participant API as FastAPI (Web Tier :8000)
+    participant Storage as StorageService (Local / GCS)
     participant Redis as Redis Broker (Port 6379)
     participant Worker as Celery Worker
     participant DB as PostgreSQL 16 (Port 5433)
 
     Client->>API: POST /api/v1/documents/upload (PDF)
-    API->>API: Save raw file to /uploads
+    API->>API: Validate MIME type & file size (<= 25MB)
+    API->>Storage: Save file to uploads/{document_id}.pdf & compute SHA-256
     API->>DB: INSERT into documents (status='pending')
-    API->>Redis: Enqueue process_pdf_task(document_id, file_path)
+    API->>Redis: Enqueue process_pdf_task(document_id, storage_path)
     API-->>Client: 202 Accepted {document_id, status='pending'}
 
     Note over Redis, Worker: Asynchronous Task Processing
     Redis->>Worker: Consume process_pdf_task
     Worker->>DB: UPDATE documents SET status='processing'
-    Worker->>Worker: IngestionPipeline.process_pdf(file_path)
+    Worker->>Storage: Retrieve PDF bytes
+    Worker->>Worker: IngestionPipeline: extract, chunk, embed
     Worker->>DB: Batch INSERT document_chunks with Vector(768)
-    Worker->>DB: UPDATE documents SET status='ready', total_chunks=N
+    Worker->>DB: UPDATE documents SET status='ready', total_chunks=N, processed_at
     
-    Client->>API: GET /api/v1/documents/{id}/status (Poll)
-    API->>DB: SELECT status, total_chunks FROM documents WHERE id=UUID
-    DB-->>API: {status: 'ready', total_chunks: N}
-    API-->>Client: 200 OK {status: 'ready'}
+    loop Polling Status
+        Client->>API: GET /api/v1/documents/{id}/status
+        API->>DB: SELECT status, page_count, total_chunks FROM documents WHERE id=UUID
+        DB-->>API: {status: 'ready', total_chunks: N}
+        API-->>Client: 200 OK {status: 'ready'}
+    end
 ```
 
-### Worker Architecture Highlights
-* **Message Broker:** Redis 7 Alpine running in Docker (`scanity_redis`).
-* **Task Retries:** Automatic retries with exponential backoff for transient network errors during embedding API calls.
-* **Failure Handling:** If an unrecoverable parsing error occurs, the worker marks the document status as `failed` with error diagnostics in the database.
+### 4.1 Worker Architecture Highlights
+* **Message Broker & Backend:** Redis 7 Alpine running in Docker (`scanity_redis`) on port `6379`.
+* **Pluggable Storage Service:** Operates on local storage (`./uploads/{doc_id}.pdf`) with pluggable Google Cloud Storage (`gs://...`) abstraction for future GCP deployment.
+* **Task Serialization:** Uses JSON serialization, UTC timekeeping, and task tracking (`task_track_started=True`).
+* **Task Retries & Error Boundaries:** If an unrecoverable parsing error occurs, the worker sets `status='failed'` in PostgreSQL so clients polling the status see an accurate failure state instead of hanging.
+
+### 4.2 How to Run Celery Workers
+
+#### On Windows Native (PowerShell):
+Because Windows does not support POSIX `fork()`, Celery must be started with the `-P solo` pool flag:
+```powershell
+cd backend
+.\venv\Scripts\activate
+celery -A app.workers.celery_app worker --loglevel=info -P solo
+```
+
+#### In WSL (Windows Subsystem for Linux):
+WSL2 supports native Linux multi-processing:
+```bash
+cd /mnt/c/Users/ABHIRUP/Documents/GitHub/Scanity/backend
+source venv/bin/activate
+celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+```
+*(WSL2 shares localhost ports with Windows, automatically connecting to Redis on port 6379 and PostgreSQL on port 5433).*

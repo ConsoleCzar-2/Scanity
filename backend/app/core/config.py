@@ -40,6 +40,13 @@ class Settings:
     # Redis / Celery
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+    CELERY_RESULT_BACKEND: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+
+    # Storage Settings (Local / GCS)
+    STORAGE_TYPE: str = os.getenv("STORAGE_TYPE", "local")  # 'local' or 'gcs'
+    UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", str(root_dir / "backend" / "uploads")))
+    GCS_BUCKET_NAME: str | None = os.getenv("GCS_BUCKET_NAME", None)
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "25"))
 
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "default-secret-key-change-in-production")
@@ -50,5 +57,7 @@ class Settings:
     VECTOR_DIMENSION: int = int(os.getenv("VECTOR_DIMENSION", "768"))
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY", None)
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+    CHUNK_SIZE_TOKENS: int = int(os.getenv("CHUNK_SIZE_TOKENS", "700"))
+    CHUNK_OVERLAP_TOKENS: int = int(os.getenv("CHUNK_OVERLAP_TOKENS", "100"))
 
 settings = Settings()
