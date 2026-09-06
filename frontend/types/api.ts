@@ -17,6 +17,7 @@ export interface DocumentResponse {
   total_chunks: number | null;
   uploaded_at: string;
   processed_at: string | null;
+  error_message?: string | null;
 }
 
 export interface DocumentUploadResponse {
@@ -34,7 +35,10 @@ export interface DocumentStatusResponse {
   total_chunks: number | null;
   uploaded_at: string;
   processed_at: string | null;
+  error_message?: string | null;
 }
+
+export type DocumentDetailResponse = DocumentResponse;
 
 export interface DocumentListResponse {
   total: number;

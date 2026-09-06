@@ -76,7 +76,11 @@ cd backend
 #### Option A: Using pytest (Recommended)
 `pytest` runs all test suites using `pytest.ini` with auto-asyncio handling and clean database connection teardown:
 ```powershell
+# With activated virtual environment:
 pytest -v
+
+# Or directly without activation:
+.\venv\Scripts\pytest.exe -v
 ```
 
 Expected Output:

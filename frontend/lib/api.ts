@@ -85,6 +85,13 @@ export const api = {
   },
 
   /**
+   * Alias for pollDocumentStatus to fetch current document status.
+   */
+  async getDocumentStatus(documentId: string): Promise<DocumentStatusResponse> {
+    return this.pollDocumentStatus(documentId);
+  },
+
+  /**
    * Fetches a paginated list of uploaded documents.
    */
   async listDocuments(skip: number = 0, limit: number = 50): Promise<DocumentListResponse> {

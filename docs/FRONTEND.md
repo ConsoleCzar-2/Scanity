@@ -1,6 +1,6 @@
 # Frontend Architecture & Design Specification
 
-> Note: **Step 8 (Frontend Initialization)** is fully completed. The Next.js 15 App Router architecture, TypeScript schemas, typed API client, formatting utilities, and dark theme dashboard shell are operational. **Step 9 (Frontend UI Components)** will implement the modular upload, document list, message container, citation chips, and popover components.
+> Note: **Step 8 (Frontend Initialization)** and **Step 9 (Frontend UI Components & Interactive Experience)** are fully completed. The Next.js 15 App Router architecture, TypeScript schemas, typed API client, formatting utilities, enterprise dark theme dashboard shell, and all interactive components are fully operational.
 
 ## 1. Overview & Technology Stack
 
@@ -11,9 +11,9 @@ The Scanity frontend is a modern, responsive Single Page Application (SPA) built
 | Framework | Next.js 15 App Router | Server and client components, optimized asset delivery, route management |
 | UI Library | React 19 | Declarative UI, state management, and modern component lifecycle |
 | Language | TypeScript 5 | End-to-end type safety matching FastAPI Pydantic schemas |
-| Styling | Tailwind CSS v4 | Utility-first styling, native CSS variables, sleek dark theme |
+| Styling | Tailwind CSS v4 | Utility-first styling, native CSS variables, crisp two-tone theme |
 | Icons | Lucide React | Modern, accessible, and lightweight iconography |
-| HTTP Client | Fetch API | Typed API client with response validation and polling |
+| HTTP Client | Fetch API | Typed API client with response validation, adaptive polling, and streaming |
 
 ---
 
@@ -23,24 +23,26 @@ The Scanity frontend is a modern, responsive Single Page Application (SPA) built
 frontend/
 |-- app/
 |   |-- favicon.ico             # Application favicon
-|   |-- globals.css             # Tailwind v4 theme variables, glassmorphism, scrollbars
+|   |-- globals.css             # Tailwind v4 theme variables, enterprise panels, keyframe animations
 |   |-- layout.tsx              # Root layout with font imports, metadata, and dark theme
-|   |-- page.tsx                # Main single-page dashboard (Live backend probe & 2-pane layout)
-|-- components/                 # Modular UI components (Scheduled for Step 9)
+|   |-- page.tsx                # Main single-page dashboard (Live backend probe & 2-column layout)
+|-- components/                 # Modular UI components (Completed in Step 9)
 |   |-- layout/
-|   |   |-- Header.tsx          # Application header with status indicator and repository links
-|   |   |-- Sidebar.tsx         # Document drawer and navigation controls
+|   |   |-- Header.tsx          # Application header with status indicator, drawer toggle, and user menu
+|   |   |-- SidebarDrawer.tsx   # Slide-out navigation drawer with conversation history and actions
 |   |-- upload/
 |   |   |-- UploadDropzone.tsx  # Drag-and-drop PDF upload component with file validation
-|   |   |-- DocumentList.tsx    # List of uploaded documents with live status indicators
+|   |   |-- DocumentList.tsx    # List of uploaded documents with adaptive polling and selection
 |   |   |-- StatusBadge.tsx     # Color-coded badge (Pending, Processing, Ready, Failed)
 |   |-- chat/
-|   |   |-- ChatContainer.tsx   # Message thread container with auto-scroll
+|   |   |-- ChatContainer.tsx   # Message thread container with auto-scroll and progressive streaming
 |   |   |-- MessageItem.tsx     # User prompt and assistant grounded answer cards
 |   |   |-- CitationChip.tsx    # Interactive citation badge (Page number, relevance score)
-|   |   |-- CitationModal.tsx   # Popover displaying cited chunk text snippet
+|   |   |-- CitationModal.tsx   # Popover displaying cited chunk text snippet and metadata
 |   |   |-- QueryInput.tsx      # Prompt input bar with send button and loading spinner
 |   |   |-- FallbackCard.tsx    # Anti-hallucination warning card for ungrounded queries
+|   |-- admin/
+|   |   |-- AdminLogsModal.tsx  # System telemetry and audit logs dashboard dialog
 |-- lib/
 |   |-- api.ts                  # Strongly typed API client & polling logic
 |   |-- constants.ts            # API base URLs, upload limits, polling intervals
@@ -103,39 +105,55 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
   * `error`: Displays actionable error message (e.g., "File is not a valid PDF").
 
 ### 4.2 `DocumentList` & `StatusBadge`
-* **Polling Architecture:**
-  * When a document is in `pending` or `processing` state, a polling timer (`setInterval`) checks `GET /api/v1/documents/{id}/status` every 2 seconds.
-  * Once the document transitions to `ready` or `failed`, polling stops automatically.
+* **Adaptive Backoff Polling Architecture:**
+  * When documents are in non-terminal states (`pending` or `processing`), an effect-driven polling loop checks `GET /api/v1/documents/{id}/status`.
+  * Applies smart exponential backoff ($2\text{s} \to 3\text{s} \to 4.5\text{s} \to \dots \to 12\text{s}$) to avoid overloading backend resources.
+  * When all documents reach terminal states (`ready` or `failed`), polling is completely suspended (zero ongoing network requests).
+* **Document Scope Management:**
+  * Individual document checkboxes allow users to restrict RAG retrieval to specific files.
+  * Global "Select All" and "Clear" actions provide immediate multi-document scoping.
 * **Status Badges:**
-  * `pending` (Yellow / Amber): Upload acknowledged; queued in message broker.
-  * `processing` (Blue / Indigo): Actively parsing pages, chunking text, or computing embeddings.
-  * `ready` (Emerald Green): Fully indexed in PostgreSQL with HNSW vector index; available for queries.
-  * `failed` (Rose Red): Processing encountered an unrecoverable format or parsing error.
+  * `pending` (Amber): Upload acknowledged; queued in Celery message broker.
+  * `processing` (Indigo): Actively parsing pages, chunking text, or computing pgvector embeddings.
+  * `ready` (Emerald Green): Fully indexed in PostgreSQL with HNSW vector index; ready for queries.
+  * `failed` (Rose Red): Processing encountered an unrecoverable format or parsing error (hover for error detail).
 
-### 4.3 `ChatContainer` & `MessageItem`
+### 4.3 `ChatContainer`, `MessageItem`, & `QueryInput`
+* **Progressive Streaming Answers:**
+  * Simulates a real-time token typewriter stream as answers are synthesized, eliminating blank wait periods.
+  * Verified citation chips smoothly pop into view upon stream completion.
 * **Message Structure:**
-  * Displays user prompt aligned to right with distinct user styling.
-  * Displays model answer aligned to left.
-* **Grounded Answer Rendering:**
-  * Displays answer text.
+  * Displays user prompt aligned to right in dark slate bubble (`bg-slate-900 border-slate-800`).
+  * Displays assistant answer card in high-contrast panel (`bg-slate-900/90 border-slate-800`).
   * Accompanied by confidence rating meter (e.g., `94% Groundedness`).
-  * Renders list of interactive `CitationChip` elements.
+  * Renders list of interactive `CitationChip` elements with source page numbers.
+* **Keyboard Navigation:**
+  * `Enter` submits query, while `Shift+Enter` inserts newlines.
+  * Dynamic scoping indicator tag shows whether querying all documents or isolated scoped files.
 
 ### 4.4 `CitationChip` & `CitationModal`
-* **Visual Representation:** Pill badge displaying `Page {n} | {relevance}%`.
+* **Visual Representation:** High-contrast pill badge displaying `Page {n} | {relevance}%`.
 * **Interactivity:**
-  * Hovering or clicking the chip opens a modal/popover displaying:
+  * Hovering or clicking the chip opens an accessible modal popover displaying:
     * Source document filename.
     * Exact source page number.
     * Verbatim chunk snippet extracted from the PDF.
     * Cosine similarity relevance score.
+    * Unique chunk UUID for enterprise auditing.
 
 ### 4.5 `FallbackCard` (Anti-Hallucination Guardrail)
-* When the backend returns `is_grounded: false` or the relevance threshold is not met:
-  * The response is rendered with a neutral warning border.
+* When the backend returns `is_grounded: false` or the relevance threshold ($0.70$) is not met:
+  * The response is rendered with a prominent refusal card (`bg-amber-950/20 border-amber-800/40`).
   * The text displays: *"Not found in the provided document(s)."*
-  * Explains that no text chunks in the selected documents exceeded the relevance threshold (0.70 cosine similarity).
-  * No hallucinated content is rendered.
+  * Explains that no text chunks in the selected documents met the similarity threshold, preventing hallucinations.
+
+### 4.6 Navigation Drawer & System Telemetry (`SidebarDrawer` & `AdminLogsModal`)
+* **Sidebar Drawer:**
+  * Collapsible left-hand navigation panel triggered via hamburger menu icon (`Menu`).
+  * Displays conversation sessions, "New Conversation" trigger, and documentation navigation links.
+* **User Profile & Admin Telemetry Modal:**
+  * Top-right user avatar with dropdown menu.
+  * Displays system telemetry: PostgreSQL status, Redis connection, Celery worker concurrency, pgvector dimensions, and query audit stats.
 
 ---
 

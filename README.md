@@ -27,7 +27,7 @@ Scanity allows organizations to ingest complex, high-volume PDF documents and qu
 - [x] **Step 6: Retrieval System (Vector Search & Relevance Gate)** - Cosine similarity search (`<=>`), HNSW-accelerated top-k retrieval, multi-document scoping, and anti-hallucination threshold gating.
 - [x] **Step 7: Generation System (Grounded Q&A & Citation Validation)** - Grounded structured output with Gemini 3.5 Flash Lite, post-hoc citation validation, and audit database persistence.
 - [x] **Step 8: Frontend Initialization** - Next.js 15 App Router, TypeScript 5, Tailwind CSS v4, typed API client, and enterprise dark dashboard shell.
-- [ ] **Step 9: Frontend UI** - Drag-and-drop upload panel, polling badges, and chat interface with interactive citation chips.
+- [x] **Step 9: Frontend UI Components & Interactive Experience** - Drag-and-drop upload panel, adaptive polling badges, navigation drawer, telemetry modal, progressive answer streaming, and verified citation popovers.
 - [ ] **Step 10: Final Polish & Production Readiness** - Production containerization, health probes, and deployment.
 
 ---
@@ -108,8 +108,13 @@ Execute all test suites across the repository in a single command:
 **Option A: Using pytest (Recommended)**
 ```powershell
 cd backend
+
+# Either activate the virtual environment:
 .\venv\Scripts\activate
 pytest -v
+
+# Or run directly without script activation:
+.\venv\Scripts\pytest.exe -v
 ```
 
 **Option B: Using native Python test runner**
