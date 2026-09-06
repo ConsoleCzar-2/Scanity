@@ -230,45 +230,67 @@ curl -X POST "http://localhost:8000/api/v1/query/search" -H "Content-Type: appli
 
 ---
 
-## 4. Scaffolded Endpoints (Planned for Step 7)
+### 3.7 Grounded Q&A Generation with Citations
+Answers natural language questions strictly grounded in uploaded documents. Retrieves top-k nearest neighbors via PostgreSQL pgvector, applies the anti-hallucination relevance threshold gate, prompts Gemini 3.5 Flash Lite with native JSON schema constraints, executes post-hoc citation validation, and persists the interaction in the audit database.
 
-### 4.1 Grounded Q&A Generation with Citations (Step 7)
-
-#### `POST /api/v1/query`
-Answers natural language questions strictly grounded in the uploaded documents.
+* **Method:** `POST`
+* **Path:** `/api/v1/query`
+* **Tags:** `Query`
+* **Authentication:** None
 * **Request Body:**
 ```json
 {
   "question": "What was the reported operating margin for Q3?",
   "document_ids": ["01a071df-5994-70a2-af14-618727cb1a4f"],
-  "top_k": 5
+  "top_k": 3,
+  "threshold": 0.70
 }
 ```
-* **Response (200 OK — Answer Found):**
+
+#### Response (200 OK — Grounded Answer Found):
 ```json
 {
-  "query_id": "01a071df-88a2-70b1-bb12-918727cb1e89",
-  "answer": "The operating margin reported for Q3 was 18.4%, driven by reduced supply chain overhead.",
-  "confidence": 0.94,
+  "query_id": "01a0755a-f6d6-7e92-8d91-9e90d59125e8",
+  "question": "What was the reported operating margin for Q3?",
+  "answer": "The operating margin reported for Q3 was 18.4%, driven by strong recurring enterprise licensing.",
+  "confidence": 0.92,
   "is_grounded": true,
   "citations": [
     {
-      "chunk_id": "01a071df-59a5-7b6f-aa99-31ec4e5e1bcb",
-      "document_id": "01a071df-5994-70a2-af14-618727cb1a4f",
-      "page_number": 7,
-      "snippet": "...operating margin reached 18.4% in the third quarter...",
-      "relevance_score": 0.892
+      "chunk_id": "01a0755a-f69a-74e9-8940-88bc19625c68",
+      "document_id": "01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27",
+      "original_filename": "annual_review_2026.pdf",
+      "page_number": 1,
+      "snippet": "In Q3 2026, Scanity achieved an operating profit margin of 18.4 percent...",
+      "relevance_score": 0.7624
     }
-  ]
+  ],
+  "created_at": "2026-09-06T06:14:50.850123Z"
 }
 ```
-* **Response (200 OK — Fallback / Hallucination Prevention):**
+
+#### Response (200 OK — Anti-Hallucination Fallback):
 ```json
 {
-  "query_id": "01a071df-88a2-70b1-bb12-918727cb1e89",
+  "query_id": "01a0755a-f6f4-72ce-9602-ef5617071fcb",
+  "question": "What is the recipe for chocolate chip cookies?",
   "answer": "Not found in the provided document(s).",
   "confidence": 0.0,
   "is_grounded": false,
-  "citations": []
+  "citations": [],
+  "created_at": "2026-09-06T06:14:50.868115Z"
 }
 ```
+
+#### Curl Command:
+```powershell
+curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
+```
+
+---
+
+## 4. Scaffolded Endpoints (Planned for Future Steps)
+
+### 4.1 Session-Scoped Multi-Turn History (Step 8 / Extension)
+* `GET /api/v1/query/history?session_id={uuid}`: Fetches chronological conversational history.
+

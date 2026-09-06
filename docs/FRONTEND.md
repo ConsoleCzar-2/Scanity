@@ -1,19 +1,19 @@
 # Frontend Architecture & Design Specification
 
-> Note: This document outlines the planned design and architectural specification for the frontend tier. It is scheduled for active implementation in **Step 8 (Frontend Initialization)** and **Step 9 (Frontend UI Components)**. It will be incrementally updated with exact implementation details, real component structures, and live tests as those steps are executed.
+> Note: **Step 8 (Frontend Initialization)** is fully completed. The Next.js 15 App Router architecture, TypeScript schemas, typed API client, formatting utilities, and dark theme dashboard shell are operational. **Step 9 (Frontend UI Components)** will implement the modular upload, document list, message container, citation chips, and popover components.
 
 ## 1. Overview & Technology Stack
 
-The Scanity frontend is a modern, responsive Single Page Application (SPA) built using **Next.js 15 App Router** and **Tailwind CSS**. It communicates with the FastAPI backend through versioned REST endpoints.
+The Scanity frontend is a modern, responsive Single Page Application (SPA) built using **Next.js 15 App Router** (Next 16.3.4), **React 19**, **TypeScript 5**, and **Tailwind CSS v4**. It communicates with the FastAPI backend through versioned REST endpoints (`/api/v1`).
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| Framework | Next.js 15 (App Router) | Server and client components, optimized asset delivery, route management |
-| Language | TypeScript 5 | End-to-end type safety with shared API data contracts |
-| Styling | Tailwind CSS | Utility-first responsive design, dark/light themes, custom token system |
-| State & Polling | React Hooks / TanStack Query | Client state, upload progress, and document processing status polling |
-| Icons | Lucide React | Lightweight, tree-shakable iconography |
-| HTTP Client | Fetch API / Axios | Strongly typed backend communication with standard error handling |
+| Framework | Next.js 15 App Router | Server and client components, optimized asset delivery, route management |
+| UI Library | React 19 | Declarative UI, state management, and modern component lifecycle |
+| Language | TypeScript 5 | End-to-end type safety matching FastAPI Pydantic schemas |
+| Styling | Tailwind CSS v4 | Utility-first styling, native CSS variables, sleek dark theme |
+| Icons | Lucide React | Modern, accessible, and lightweight iconography |
+| HTTP Client | Fetch API | Typed API client with response validation and polling |
 
 ---
 
@@ -22,10 +22,11 @@ The Scanity frontend is a modern, responsive Single Page Application (SPA) built
 ```
 frontend/
 |-- app/
-|   |-- layout.tsx              # Root layout with font imports, metadata, and theme provider
-|   |-- page.tsx                # Main single-page dashboard (Split-view: Upload & Chat)
-|   |-- globals.css             # Tailwind base layers, variables, and custom scrollbars
-|-- components/
+|   |-- favicon.ico             # Application favicon
+|   |-- globals.css             # Tailwind v4 theme variables, glassmorphism, scrollbars
+|   |-- layout.tsx              # Root layout with font imports, metadata, and dark theme
+|   |-- page.tsx                # Main single-page dashboard (Live backend probe & 2-pane layout)
+|-- components/                 # Modular UI components (Scheduled for Step 9)
 |   |-- layout/
 |   |   |-- Header.tsx          # Application header with status indicator and repository links
 |   |   |-- Sidebar.tsx         # Document drawer and navigation controls
@@ -41,14 +42,18 @@ frontend/
 |   |   |-- QueryInput.tsx      # Prompt input bar with send button and loading spinner
 |   |   |-- FallbackCard.tsx    # Anti-hallucination warning card for ungrounded queries
 |-- lib/
-|   |-- api.ts                  # Centralized API service functions (upload, status, query)
-|   |-- constants.ts            # API base URLs, polling intervals, maximum file size
+|   |-- api.ts                  # Strongly typed API client & polling logic
+|   |-- constants.ts            # API base URLs, upload limits, polling intervals
 |   |-- utils.ts                # Formatting helpers (bytes to MB, dates, confidence percentages)
 |-- types/
 |   |-- api.ts                  # TypeScript interfaces matching FastAPI Pydantic models
-|-- tailwind.config.ts          # Tailwind theme configuration and custom color tokens
+|-- .env.example                # Safe frontend environment template
+|-- .env.local                  # Local development environment configuration
+|-- next.config.ts              # Next.js config with backend API proxy rewrites
+|-- postcss.config.mjs          # PostCSS configuration
 |-- tsconfig.json               # TypeScript compiler configuration
 |-- package.json                # Project dependencies and run scripts
+|-- README.md                   # Frontend setup and running instructions
 ```
 
 ---
@@ -134,70 +139,56 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
 
 ---
 
-## 5. API Client Layer (`lib/api.ts`)
+## 5. API Client Layer (`lib/api.ts` and `types/api.ts`)
 
-Centralized service functions encapsulating HTTP calls:
+Centralized service functions encapsulating strongly typed HTTP calls to the FastAPI backend:
 
 ```typescript
-export interface DocumentUploadResponse {
-  document_id: string;
-  filename: string;
-  status: 'pending' | 'processing' | 'ready' | 'failed';
-  message: string;
-}
+import type {
+  DocumentResponse,
+  DocumentDetailResponse,
+  DocumentListResponse,
+  QueryRequest,
+  QueryResponse,
+  HealthResponse,
+} from '@/types/api';
 
-export interface DocumentStatusResponse {
-  document_id: string;
-  filename: string;
-  status: 'pending' | 'processing' | 'ready' | 'failed';
-  page_count?: number;
-  total_chunks?: number;
-  processed_at?: string;
-  error_message?: string;
-}
+// Live backend health probe
+checkHealth(): Promise<HealthResponse>;
 
-export interface Citation {
-  chunk_id: string;
-  document_id: string;
-  page_number: number;
-  snippet: string;
-  relevance_score: number;
-}
+// Upload PDF document with validation
+uploadDocument(file: File): Promise<DocumentResponse>;
 
-export interface QueryResponse {
-  query_id: string;
-  answer: string;
-  confidence: number;
-  is_grounded: boolean;
-  citations: Citation[];
-}
+// Poll document processing status until terminal state ('ready' or 'failed')
+pollDocumentStatus(
+  documentId: string,
+  onUpdate?: (doc: DocumentDetailResponse) => void,
+  intervalMs?: number,
+  maxAttempts?: number
+): Promise<DocumentDetailResponse>;
 
-// Upload PDF document
-export async function uploadDocument(file: File): Promise<DocumentUploadResponse>;
+// List all indexed documents
+listDocuments(page?: number, pageSize?: number): Promise<DocumentListResponse>;
 
-// Poll processing status
-export async function getDocumentStatus(id: string): Promise<DocumentStatusResponse>;
+// Delete document and its chunk vectors
+deleteDocument(documentId: string): Promise<{ success: boolean; message: string }>;
 
-// Submit natural-language question
-export async function submitQuery(
-  question: string, 
-  documentIds?: string[], 
-  topK: number = 5
-): Promise<QueryResponse>;
+// Submit natural-language question with optional document scope and similarity threshold
+askQuestion(request: QueryRequest): Promise<QueryResponse>;
 ```
 
 ---
 
 ## 6. Environment Configuration
 
-The frontend consumes environment variables prefixed with `NEXT_PUBLIC_` so they are accessible in client components:
+The frontend consumes environment variables prefixed with `NEXT_PUBLIC_` to be accessible within client components:
 
 ```env
-# URL to FastAPI backend
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+# URL to FastAPI backend (defaults to http://localhost:8000/api/v1)
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 
-# Maximum upload size in bytes (25MB)
-NEXT_PUBLIC_MAX_FILE_SIZE_BYTES=26214400
+# Maximum upload size in bytes (50MB)
+NEXT_PUBLIC_MAX_FILE_SIZE_BYTES=52428800
 
 # Status polling interval in milliseconds
 NEXT_PUBLIC_POLL_INTERVAL_MS=2000

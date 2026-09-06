@@ -25,8 +25,8 @@ Scanity allows organizations to ingest complex, high-volume PDF documents and qu
 - [x] **Step 4: Core Ingestion Pipeline** - PyMuPDF page-preserving extraction, ~700-token recursive chunking with 100-token sliding overlap, and Gemini `gemini-embedding-001`.
 - [x] **Step 5: Celery Worker Integration** - Decoupled async processing queue via Redis, storage service abstraction, and RESTful document management endpoints.
 - [x] **Step 6: Retrieval System (Vector Search & Relevance Gate)** - Cosine similarity search (`<=>`), HNSW-accelerated top-k retrieval, multi-document scoping, and anti-hallucination threshold gating.
-- [ ] **Step 7: Generation System** - Grounded structured output with Gemini 3.5 Flash Lite, citation verification, and fallback guards.
-- [ ] **Step 8: Frontend Initialization** - Next.js 15 App Router, TypeScript, and Tailwind CSS.
+- [x] **Step 7: Generation System (Grounded Q&A & Citation Validation)** - Grounded structured output with Gemini 3.5 Flash Lite, post-hoc citation validation, and audit database persistence.
+- [x] **Step 8: Frontend Initialization** - Next.js 15 App Router, TypeScript 5, Tailwind CSS v4, typed API client, and enterprise dark dashboard shell.
 - [ ] **Step 9: Frontend UI** - Drag-and-drop upload panel, polling badges, and chat interface with interactive citation chips.
 - [ ] **Step 10: Final Polish & Production Readiness** - Production containerization, health probes, and deployment.
 
@@ -37,6 +37,7 @@ Scanity allows organizations to ingest complex, high-volume PDF documents and qu
 ### 3.1 Prerequisites
 - Docker & Docker Compose
 - Python 3.12+
+- Node.js 18+ & npm (for Next.js 15 frontend)
 - WSL2 (optional, for multi-process Linux Celery workers on Windows)
 
 ### 3.2 Infrastructure Setup
@@ -79,12 +80,46 @@ source venv/bin/activate
 celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
 ```
 
+### 3.5 Frontend Setup & Dev Server
+In a separate terminal:
+```powershell
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start Next.js development server
+npm run dev
+
+# Or build and test production bundle
+npm run build
+npm run lint
+```
+The frontend is accessible at `http://localhost:3000` with live health monitoring connected to the FastAPI backend.
+
 ---
 
 ## 4. Verification & Testing
 
-Execute the automated test suites from the `backend/` directory:
+### 4.1 Run All Tests at Once
 
+Execute all test suites across the repository in a single command:
+
+**Option A: Using pytest (Recommended)**
+```powershell
+cd backend
+.\venv\Scripts\activate
+pytest -v
+```
+
+**Option B: Using native Python test runner**
+```powershell
+cd backend
+.\venv\Scripts\activate
+python run_tests.py
+```
+
+### 4.2 Run Individual Test Suites
 ```powershell
 # 1. Ingestion Pipeline Unit Tests
 python tests/test_ingestion.py
@@ -94,14 +129,33 @@ python tests/test_worker_and_endpoints.py
 
 # 3. Vector Retrieval & Relevance Gate Tests
 python tests/test_retrieval.py
+
+# 4. Grounded Generation & Citation Validation Tests
+python tests/test_generation.py
 ```
 
-### Inspect Live System via API:
+### 4.3 Frontend Verification & Linting
+```powershell
+cd frontend
+
+# Run ESLint validation
+npm run lint
+
+# Run production build and TypeScript check
+npm run build
+```
+
+### 4.4 Inspect Live System via API & Browser
+- Web Dashboard: `http://localhost:3000` (Next.js 15 frontend)
 - Health Probe: `curl http://localhost:8000/api/v1/health`
 - Document List: `curl http://localhost:8000/api/v1/documents`
 - Vector Search Inspection:
   ```powershell
   curl -X POST "http://localhost:8000/api/v1/query/search" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
+  ```
+- Grounded Q&A with Citations:
+  ```powershell
+  curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
   ```
 - Interactive API Documentation:
   - Swagger UI: `http://localhost:8000/docs`

@@ -11,3 +11,5 @@ google-genai
 python-multipart
 python-dotenv
 uuid6
+pytest
+pytest-asyncio

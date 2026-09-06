@@ -161,10 +161,15 @@ def test_end_to_end_pipeline():
     )
 
 
-if __name__ == "__main__":
+def run_all():
     print("Running Ingestion Pipeline Test Suite...\n")
     test_pdf_parser()
     test_recursive_chunker()
     test_embedding_service()
     test_end_to_end_pipeline()
     print("\nALL INGESTION TESTS PASSED SUCCESSFULLY!")
+
+
+if __name__ == "__main__":
+    run_all()
+

@@ -48,26 +48,94 @@ Scanity adheres to a multi-tiered verification strategy designed to ensure deter
 | `[5/6] Math Consistency` | Distance transformation | Validates invariant relation $s = 1 - d$ across all distance values. |
 | `[6/6] REST API Search` | `POST /query/search` | Tests FastAPI endpoint returning 200 OK with ranked chunks and threshold flags. |
 
+### 2.4 Grounded Generation & Citation Validation Tests (`backend/tests/test_generation.py`)
+
+| Test Phase | Target Component | Verification Criteria |
+|---|---|---|
+| `[1/7] Grounded Answer Synthesis` | `GenerationService.generate_grounded_answer` | Generates factual answer strictly citing verified chunk UUIDs and page numbers. |
+| `[2/7] Anti-Hallucination Gate` | Relevance threshold check | Completely off-topic query triggers fallback `"Not found in the provided document(s)."` without calling LLM. |
+| `[3/7] Citation Integrity Validator` | `validate_citations` | Drops fabricated/hallucinated chunk IDs while retaining verified database chunks. |
+| `[4/7] Complete Hallucination Defense` | Post-hoc fallback | If 100% of citations fail validation, answer is suppressed and marked ungrounded. |
+| `[5/7] REST API Grounded Execution` | `POST /api/v1/query` | Returns 200 OK with `is_grounded=True`, confidence score, and verified citations list. |
+| `[6/7] Audit Database Persistence` | PostgreSQL `queries` & `query_citations` | Confirms query text, answer, confidence, groundedness flag, and citations are stored in DB. |
+| `[7/7] Document Cascade Deletion` | `DELETE /api/v1/documents/{id}` | Confirms deleting source document cascades to chunks and query citations cleanly. |
+
 ---
 
 ## 3. How to Execute Tests
 
-### 3.1 Run Ingestion Unit Tests
-From the `backend/` directory with the virtual environment activated:
+### 3.1 Run All Tests at Once
+
+To run the entire repository test suite (24 automated tests across all 4 suites) in a single command, activate the virtual environment from the `backend/` directory:
+
 ```powershell
 cd backend
 .\venv\Scripts\activate
+```
 
-# Run the ingestion unit test suite
+#### Option A: Using pytest (Recommended)
+`pytest` runs all test suites using `pytest.ini` with auto-asyncio handling and clean database connection teardown:
+```powershell
+pytest -v
+```
+
+Expected Output:
+```
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- backend\venv\Scripts\python.exe
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_generation.py::test_generation_suite PASSED                   [ 14%]
+tests/test_ingestion.py::test_pdf_parser PASSED                          [ 28%]
+tests/test_ingestion.py::test_recursive_chunker PASSED                   [ 42%]
+tests/test_ingestion.py::test_embedding_service PASSED                   [ 57%]
+tests/test_ingestion.py::test_end_to_end_pipeline PASSED                 [ 71%]
+tests/test_retrieval.py::test_retrieval_suite PASSED                     [ 85%]
+tests/test_worker_and_endpoints.py::test_full_document_lifecycle PASSED  [100%]
+
+============================== 7 passed in 1.43s ==============================
+```
+
+#### Option B: Using Native Python Runner
+Runs all 4 test suites sequentially using Python, outputting full granular phase logs for each suite:
+```powershell
+python run_tests.py
+```
+
+Expected Output:
+```
+======================================================================
+SCANITY UNIFIED TEST RUNNER (ALL 4 SUITES)
+======================================================================
+
+[Suite 1/4] Running Ingestion Pipeline Unit Tests...
+...
+[Suite 2/4] Running Worker & Document Endpoints Lifecycle Tests...
+...
+[Suite 3/4] Running Vector Retrieval & Relevance Gate Tests...
+...
+[Suite 4/4] Running Grounded Generation & Citation Validation Tests...
+...
+======================================================================
+ALL 4 SCANITY TEST SUITES PASSED SUCCESSFULLY (100%)
+======================================================================
+```
+
+---
+
+### 3.2 Run Individual Test Suites
+
+### 3.2.1 Run Ingestion Unit Tests
+```powershell
 python tests/test_ingestion.py
 ```
 
-### 3.2 Run Worker & Endpoint Lifecycle Tests
+### 3.2.2 Run Worker & Endpoint Lifecycle Tests
 ```powershell
-cd backend
-.\venv\Scripts\activate
-
-# Run the worker and document endpoints test suite
 python tests/test_worker_and_endpoints.py
 ```
 
@@ -87,12 +155,8 @@ PASS [7/7]: Edge cases handled correctly (invalid extensions, empty uploads, 404
 ALL STEP 5 AUTOMATED TESTS PASSED SUCCESSFULLY!
 ```
 
-### 3.3 Run Retrieval System & Relevance Gate Tests
+### 3.2.3 Run Retrieval System & Relevance Gate Tests
 ```powershell
-cd backend
-.\venv\Scripts\activate
-
-# Run the retrieval system test suite
 python tests/test_retrieval.py
 ```
 
@@ -108,7 +172,28 @@ PASS [4/6]: Anti-hallucination gate triggered: off-topic query rejected (top_sim
 PASS [5/6]: Mathematical consistency of cosine similarity transformation verified.
 PASS [6/6]: POST /api/v1/query/search returned 200 OK with Page 2 ranked #1.
 
-ALL STEP 6 RETRIEVAL TESTS PASSED SUCCESSFULLY!
+ALL RETRIEVAL TESTS PASSED SUCCESSFULLY!
+```
+
+### 3.2.4 Run Grounded Generation & Citation Validation Tests
+```powershell
+python tests/test_generation.py
+```
+
+#### Expected Test Output:
+```
+================================================================
+Testing Step 7: Grounded LLM Generation & Citation Validation
+================================================================
+PASS [1/7]: Grounded answer generated with verified citation on page 1.
+PASS [2/7]: Off-topic query successfully rejected by anti-hallucination gate.
+PASS [3/7]: Post-hoc citation validator discarded hallucinated chunk ID.
+PASS [4/7]: Validator stripped 100% of unbacked citations.
+PASS [5/7]: HTTP POST /api/v1/query returned grounded answer with Page 2 citation.
+PASS [6/7]: Audit persistence confirmed in queries and query_citations tables.
+PASS [7/7]: Document cascade deletion verified across chunks and query citations.
+
+ALL 7 GENERATION & CITATION VALIDATION TESTS PASSED SUCCESSFULLY!
 ```
 
 ---

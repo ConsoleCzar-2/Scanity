@@ -70,7 +70,24 @@ source venv/bin/activate
 celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
 ```
 
-### 5. Verify System Health & Document Endpoints
+### 5. Frontend Setup & Run
+From the repository root:
+```powershell
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Or build and test production bundle
+npm run build
+npm run lint
+```
+The frontend application will be live at `http://localhost:3000` with live backend connectivity to `http://localhost:8000`.
+
+### 6. Verify System Health & Document Endpoints
 ```powershell
 # Check health probe
 curl http://localhost:8000/api/v1/health
@@ -103,7 +120,7 @@ Interactive API docs are available at:
 - [x] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `gemini-embedding-001` integration.
 - [x] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis, cloud-ready storage abstraction, and upload status tracking.
 - [x] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
-- [ ] **Step 7: Generation System** — Grounded structured output with Gemini, citation verification, and fallback guards.
-- [ ] **Step 8: Frontend Initialization** — Next.js 15 App Router, TypeScript, and Tailwind CSS.
+- [x] **Step 7: Generation System** — Grounded structured output with Gemini 3.5 Flash Lite, post-hoc citation validation, and anti-hallucination guards.
+- [x] **Step 8: Frontend Initialization** — Next.js 15 App Router, TypeScript 5, Tailwind CSS v4, typed API client, and enterprise dark dashboard shell.
 - [ ] **Step 9: Frontend UI** — Drag-and-drop upload panel, polling badges, and chat interface with citation chips.
 - [ ] **Step 10: Final Polish & Production Readiness** — Containerized deployment and documentation.

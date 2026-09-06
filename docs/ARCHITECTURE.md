@@ -109,7 +109,8 @@ backend/
     │   ├── __init__.py
     │   ├── ingestion.py          # PDFParser, RecursiveTokenChunker, GeminiEmbeddingService
     │   ├── storage.py            # BaseStorageService, LocalStorageService, GCSStorageService
-    │   └── retrieval.py          # KNN vector similarity search & relevance threshold gate
+    │   ├── retrieval.py          # KNN vector similarity search & relevance threshold gate
+    │   └── generation.py         # Grounded LLM synthesis & post-hoc citation integrity validator
     └── workers/                  # Asynchronous task processing (Celery)
         ├── __init__.py           # Exported celery_app and tasks
         ├── celery_app.py         # Celery configuration with Redis broker
@@ -148,12 +149,14 @@ backend/
 4. **Vector Embedding:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors.
 5. **Persistence & Indexing:** Chunks and embeddings are stored in `document_chunks`. The HNSW index enables sub-10ms nearest-neighbor retrieval. Status updates to `ready`.
 
-### 4.2 Query & Guardrail Pipeline
-*(Retrieval & Relevance Gate Implemented & Verified in Step 6; Generation & Citations in Step 7)*
+### 4.2 Query, Guardrail & Generation Pipeline
+*(Retrieval, Relevance Gate, Grounded Generation & Citation Validation Implemented & Verified in Steps 6 and 7)*
 
 1. **Question Embedding:** User question is embedded into a 768-dimensional vector using `GeminiEmbeddingService` (`gemini-embedding-001`).
 2. **Vector Similarity Search (KNN):** PostgreSQL executes a cosine distance query (`<=>`) joining `document_chunks` and `documents` (filtered by `status = 'ready'`), returning the nearest $k$ chunks ordered by distance.
 3. **Multi-Document Scoping:** The query dynamically appends `WHERE document_id IN (...)` if specific document IDs are specified by the caller.
 4. **Distance-to-Similarity Conversion:** The cosine distance $d$ is mapped to similarity $s = \max(0.0, \min(1.0, 1.0 - d))$.
-5. **Relevance Threshold Gate:** If the maximum cosine similarity among retrieved chunks is below `RELEVANCE_THRESHOLD` (default: 0.70), the pipeline flags `meets_threshold = False`, suppresses irrelevant chunks, and prevents ungrounded hallucinations before the LLM is invoked.
-6. **Constrained Generation (Step 7):** When the gate passes, retrieved chunks and question are forwarded to `Gemini 3.5 Flash Lite` with a strict JSON schema for grounded answer synthesis and post-hoc citation validation.
+5. **Relevance Threshold Gate:** If the maximum cosine similarity among retrieved chunks is below `RELEVANCE_THRESHOLD` (default: 0.70), the pipeline flags `meets_threshold = False`, suppresses candidate chunks, saves an ungrounded audit record in `queries`, and immediately returns `"Not found in the provided document(s)."` without invoking the LLM.
+6. **Constrained Generation:** When the relevance gate passes, retrieved chunks and question are forwarded to `Gemini 3.5 Flash Lite` with temperature 0.0 and a strict JSON schema (`GroundedAnswerSchema`).
+7. **Post-Hoc Citation Validation:** The citation validator verifies that every cited `chunk_id` mathematically exists within the candidate set retrieved from PostgreSQL. Unverified or fabricated chunk IDs are stripped. If no valid citations remain, the answer is suppressed and falls back to `"Not found in the provided document(s)."`.
+8. **Audit Persistence:** The query, groundedness flag, confidence score, document references, and verified citations (with rank and relevance score) are committed atomically to PostgreSQL tables `queries`, `query_documents`, and `query_citations`.

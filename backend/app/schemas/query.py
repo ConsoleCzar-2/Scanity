@@ -40,3 +40,75 @@ class QuerySearchRequest(BaseModel):
         le=1.0,
         description="Optional custom relevance threshold override (defaults to environment setting, e.g. 0.70)"
     )
+
+
+class CitationResponse(BaseModel):
+    """Represents a validated citation linking a statement to a source PDF page."""
+    model_config = ConfigDict(from_attributes=True)
+
+    chunk_id: uuid.UUID = Field(..., description="UUID of the cited chunk")
+    document_id: uuid.UUID = Field(..., description="UUID of the parent document")
+    original_filename: str = Field(..., description="Human-readable filename of the source document")
+    page_number: int = Field(..., description="1-indexed source PDF page number")
+    snippet: str = Field(..., description="Verbatim text excerpt from the cited chunk")
+    relevance_score: float = Field(..., description="Cosine similarity score of this chunk to the query")
+
+
+class QueryRequest(BaseModel):
+    """User prompt request for grounded document Q&A."""
+    question: str = Field(..., min_length=2, max_length=2000, description="User question")
+    document_ids: Optional[List[uuid.UUID]] = Field(
+        default=None,
+        description="Optional list of document UUIDs to scope retrieval. If omitted, searches across all documents."
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=20,
+        description="Optional maximum number of chunks to retrieve (defaults to DEFAULT_TOP_K in config)"
+    )
+    threshold: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Optional relevance threshold override (defaults to RELEVANCE_THRESHOLD in config)"
+    )
+    session_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Optional client session identifier for grouping conversation threads"
+    )
+
+
+class QueryResponse(BaseModel):
+    """Response payload containing grounded answer and verified citations."""
+    model_config = ConfigDict(from_attributes=True)
+
+    query_id: uuid.UUID = Field(..., description="Unique UUIDv7 identifier of the query record")
+    question: str = Field(..., description="User question asked")
+    answer: str = Field(..., description="Factual answer grounded in document excerpts or fallback string")
+    confidence: float = Field(..., description="Confidence score of the answer (0.0 to 1.0)")
+    is_grounded: bool = Field(..., description="True if answer is verified and supported by citations")
+    citations: List[CitationResponse] = Field(default_factory=list, description="List of verified citations")
+    created_at: Optional[str] = Field(default=None, description="ISO timestamp of query creation")
+
+
+class RawCitation(BaseModel):
+    """Internal schema for model output citation items."""
+    chunk_id: str = Field(..., description="UUID string of the cited chunk")
+    page_number: int = Field(..., description="Source page number")
+
+
+class GroundedAnswerSchema(BaseModel):
+    """Pydantic schema passed to Gemini API for JSON structured output."""
+    answer: str = Field(..., description="Grounded answer to the question using ONLY provided excerpts")
+    citations: List[RawCitation] = Field(
+        default_factory=list,
+        description="List of cited chunk_id and page_number tuples used to derive the answer"
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from 0.0 to 1.0 indicating degree of support from excerpts"
+    )
+
