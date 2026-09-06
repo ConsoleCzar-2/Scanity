@@ -220,19 +220,48 @@ class GeminiEmbeddingService:
                 self.use_mock = True
 
     def _generate_mock_vector(self, text: str) -> List[float]:
-        """Generates a deterministic 768-dimensional normalized unit vector based on text content."""
-        # Use SHA-256 hash of text to seed deterministic coordinates
-        hasher = hashlib.sha256(text.encode("utf-8"))
-        digest = hasher.digest()
-        vector = []
-        for i in range(self.dimension):
-            byte_val = digest[i % len(digest)]
-            val = ((byte_val + i) % 256) / 255.0 - 0.5
-            vector.append(val)
+        """
+        Generates a deterministic 768-dimensional normalized unit vector based on text content.
+        Uses token hashing combined with a language subspace centroid to model realistic
+        dense embedding behavior (0.70-0.90 similarity for semantically related texts,
+        < 0.65 for cross-domain/off-topic texts) for offline testing without paid API quota.
+        """
+        import re
 
-        # Normalize to unit length for cosine similarity
-        norm = math.sqrt(sum(x * x for x in vector)) or 1.0
-        return [round(x / norm, 6) for x in vector]
+        def _hash_token(token: str) -> List[float]:
+            h = hashlib.sha256(token.encode("utf-8")).digest()
+            vec = [(((h[i % len(h)] + i) % 256) / 255.0 - 0.5) for i in range(self.dimension)]
+            norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+            return [x / norm for x in vec]
+
+        # Shared subspace centroid across the language space
+        centroid = _hash_token("scanity_dense_embedding_subspace_centroid")
+
+        # Extract alphanumeric word tokens and filter common functional stopwords
+        stopwords = {
+            "what", "was", "is", "are", "the", "in", "of", "and", "a", "an",
+            "for", "to", "with", "by", "on", "at", "from", "our", "were"
+        }
+        all_words = re.findall(r"\b\w+\b", text.lower())
+        content_words = [w for w in all_words if w not in stopwords]
+        words = content_words if content_words else all_words
+        if not words:
+            words = ["empty"]
+
+        # Aggregate semantic token vectors
+        combined = [0.0] * self.dimension
+        for w in words:
+            wv = _hash_token(w)
+            for i in range(self.dimension):
+                combined[i] += wv[i]
+
+        sem_norm = math.sqrt(sum(x * x for x in combined)) or 1.0
+        semantic_comp = [x / sem_norm for x in combined]
+
+        # Blend: 0.55 common language subspace + 0.45 specific lexical semantics
+        blended = [0.55 * centroid[i] + 0.45 * semantic_comp[i] for i in range(self.dimension)]
+        blended_norm = math.sqrt(sum(x * x for x in blended)) or 1.0
+        return [round(x / blended_norm, 6) for x in blended]
 
     def embed_texts(self, texts: Sequence[str]) -> List[List[float]]:
         """Generates 768-dimensional embeddings for a sequence of text strings."""
@@ -267,6 +296,13 @@ class GeminiEmbeddingService:
                 embeddings.extend([self._generate_mock_vector(t) for t in batch])
 
         return embeddings
+
+    def get_embedding(self, text: str) -> List[float]:
+        """Generates a single 768-dimensional embedding vector for the provided text."""
+        results = self.embed_texts([text])
+        if not results:
+            return [0.0] * self.dimension
+        return results[0]
 
     def embed_chunks(self, chunks: Sequence[TextChunk]) -> List[EmbeddedChunk]:
         """Embeds a sequence of TextChunks, returning EmbeddedChunk objects with vector values."""

@@ -89,7 +89,7 @@ POSTGRES_PASSWORD=scanity_secure_password
 POSTGRES_DB=scanity
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5433
-DATABASE_URL=postgresql+asyncpg://scanity_user:scanity_secure_password@localhost:5433/scanity
+DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@localhost:5433/scanity
 
 # Redis & Celery
 REDIS_HOST=localhost
@@ -101,7 +101,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 GEMINI_API_KEY=your_gemini_api_key_here
 EMBEDDING_MODEL=gemini-embedding-001
 VECTOR_DIMENSION=768
-LLM_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-3.5-flash-lite
 
 # Ingestion Pipeline Tuning
 CHUNK_SIZE_TOKENS=700
@@ -110,6 +110,10 @@ MAX_UPLOAD_SIZE_MB=25
 
 # Storage
 UPLOAD_DIR=./uploads
+
+# Retrieval & Guardrails
+RELEVANCE_THRESHOLD=0.70
+DEFAULT_TOP_K=5
 ```
 
 ---

@@ -90,21 +90,30 @@ backend/
     │   ├── base.py               # DeclarativeBase with UUIDv7 generator
     │   ├── document.py           # Document & DocumentChunk with pgvector
     │   └── query.py              # Query, QueryCitation, QueryDocument
-    ├── schemas/                  # Pydantic validation schemas (scaffolded)
-    │   └── __init__.py
+    ├── schemas/                  # Pydantic validation schemas
+    │   ├── __init__.py
+    │   ├── document.py           # Ingestion, status, and upload schemas
+    │   └── query.py              # RetrievedChunk, RetrievalResult, QuerySearchRequest
     ├── api/                      # REST API routing
     │   ├── __init__.py
-    │   ├── deps.py               # Shared endpoint dependencies
+    │   ├── deps.py               # Shared endpoint dependencies (get_db)
     │   └── v1/
     │       ├── __init__.py
     │       ├── router.py         # Consolidated v1 router
     │       └── endpoints/
     │           ├── __init__.py
-    │           └── health.py     # Live DB probe endpoint
-    ├── services/                 # Pure business logic (scaffolded)
-    │   └── __init__.py           # ingestion, retrieval, generation
-    └── workers/                  # Background worker definitions (scaffolded)
-        └── __init__.py           # Celery application and task definitions
+    │           ├── health.py     # Live DB probe endpoint
+    │           ├── documents.py  # PDF upload, status polling, list, and delete
+    │           └── query.py      # Vector search inspection endpoint
+    ├── services/                 # Pure domain business logic
+    │   ├── __init__.py
+    │   ├── ingestion.py          # PDFParser, RecursiveTokenChunker, GeminiEmbeddingService
+    │   ├── storage.py            # BaseStorageService, LocalStorageService, GCSStorageService
+    │   └── retrieval.py          # KNN vector similarity search & relevance threshold gate
+    └── workers/                  # Asynchronous task processing (Celery)
+        ├── __init__.py           # Exported celery_app and tasks
+        ├── celery_app.py         # Celery configuration with Redis broker
+        └── tasks.py              # process_pdf_task with async DB state machine
 ```
 
 ---
@@ -140,8 +149,11 @@ backend/
 5. **Persistence & Indexing:** Chunks and embeddings are stored in `document_chunks`. The HNSW index enables sub-10ms nearest-neighbor retrieval. Status updates to `ready`.
 
 ### 4.2 Query & Guardrail Pipeline
-1. **Question Embedding:** User question is embedded into a 768-dimensional vector using the exact same Gemini model.
-2. **Vector Similarity Search:** PostgreSQL executes a cosine distance query (`<=>`) to retrieve the top 5 chunks.
-3. **Relevance Threshold Gate:** If the cosine similarity of the top chunk is below `0.70`, the pipeline halts immediately and returns *"Not found in the provided document(s)"* without invoking the LLM.
-4. **Constrained Prompting:** The LLM is instructed to answer strictly from the retrieved chunks.
-5. **Post-Hoc Citation Verification:** The system verifies that every cited chunk ID in the model's output corresponds to a chunk genuinely retrieved from the database.
+*(Retrieval & Relevance Gate Implemented & Verified in Step 6; Generation & Citations in Step 7)*
+
+1. **Question Embedding:** User question is embedded into a 768-dimensional vector using `GeminiEmbeddingService` (`gemini-embedding-001`).
+2. **Vector Similarity Search (KNN):** PostgreSQL executes a cosine distance query (`<=>`) joining `document_chunks` and `documents` (filtered by `status = 'ready'`), returning the nearest $k$ chunks ordered by distance.
+3. **Multi-Document Scoping:** The query dynamically appends `WHERE document_id IN (...)` if specific document IDs are specified by the caller.
+4. **Distance-to-Similarity Conversion:** The cosine distance $d$ is mapped to similarity $s = \max(0.0, \min(1.0, 1.0 - d))$.
+5. **Relevance Threshold Gate:** If the maximum cosine similarity among retrieved chunks is below `RELEVANCE_THRESHOLD` (default: 0.70), the pipeline flags `meets_threshold = False`, suppresses irrelevant chunks, and prevents ungrounded hallucinations before the LLM is invoked.
+6. **Constrained Generation (Step 7):** When the gate passes, retrieved chunks and question are forwarded to `Gemini 3.5 Flash Lite` with a strict JSON schema for grounded answer synthesis and post-hoc citation validation.

@@ -53,11 +53,32 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-### 4. Verify System Health
+### 4. Background Celery Worker
+In a separate terminal, launch the Celery task worker:
+
+**Windows Native (PowerShell):**
 ```powershell
-curl http://localhost:8000/api/v1/health
+cd backend
+.\venv\Scripts\activate
+celery -A app.workers.celery_app worker --loglevel=info -P solo
 ```
-Expected output:
+
+**WSL (Linux Subsystem):**
+```bash
+cd /mnt/c/Users/ABHIRUP/Documents/GitHub/Scanity/backend
+source venv/bin/activate
+celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+```
+
+### 5. Verify System Health & Document Endpoints
+```powershell
+# Check health probe
+curl http://localhost:8000/api/v1/health
+
+# Check documents list
+curl http://localhost:8000/api/v1/documents
+```
+Expected health probe output:
 ```json
 {
   "status": "ok",
@@ -81,7 +102,7 @@ Interactive API docs are available at:
 - [x] **Step 3: Database Models & Migrations** — Enterprise modular backend, UUIDv7 primary keys, pgvector `Vector(768)` with HNSW index, and Alembic migrations.
 - [x] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `gemini-embedding-001` integration.
 - [x] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis, cloud-ready storage abstraction, and upload status tracking.
-- [ ] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
+- [x] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
 - [ ] **Step 7: Generation System** — Grounded structured output with Gemini, citation verification, and fallback guards.
 - [ ] **Step 8: Frontend Initialization** — Next.js 15 App Router, TypeScript, and Tailwind CSS.
 - [ ] **Step 9: Frontend UI** — Drag-and-drop upload panel, polling badges, and chat interface with citation chips.

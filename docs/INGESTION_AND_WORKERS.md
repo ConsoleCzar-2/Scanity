@@ -84,7 +84,10 @@ print(f"Generated {result.total_chunks} embedded chunks.")
 | `TextChunk` | `chunk_index: int`<br/>`page_number: int`<br/>`content: str`<br/>`token_count: int` | Sliced text segment with sequence and page tracking |
 | `EmbeddedChunk` | `chunk_index: int`<br/>`page_number: int`<br/>`content: str`<br/>`token_count: int`<br/>`embedding: List[float]` | Chunk paired with 768-dimensional float embedding |
 | `IngestionResult` | `filename: str`<br/>`page_count: int`<br/>`total_chunks: int`<br/>`chunks: List[EmbeddedChunk]` | Complete pipeline output payload |
-| `DocumentResponse` | `id: UUID`<br/>`original_filename: str`<br/>`status: str`<br/>`page_count: Optional[int]`<br/>`total_chunks: Optional[int]` | Document status response schema |
+| `DocumentResponse` | `id: UUID`<br/>`original_filename: str`<br/>`status: str`<br/>`page_count: Optional[int]`<br/>`total_chunks: Optional[int]`<br/>`uploaded_at: datetime`<br/>`processed_at: Optional[datetime]` | Base document metadata response schema |
+| `DocumentUploadResponse` | `document_id: UUID`<br/>`original_filename: str`<br/>`status: str`<br/>`message: str` | HTTP 202 response schema for PDF file upload |
+| `DocumentStatusResponse` | `id: UUID`<br/>`original_filename: str`<br/>`status: str`<br/>`page_count: Optional[int]`<br/>`total_chunks: Optional[int]`<br/>`uploaded_at: datetime`<br/>`processed_at: Optional[datetime]` | Dedicated polling response schema |
+| `DocumentListResponse` | `total: int`<br/>`documents: List[DocumentResponse]` | Paginated document listing response payload |
 
 ---
 

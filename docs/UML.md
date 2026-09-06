@@ -106,13 +106,14 @@ flowchart TD
     end
 
     subgraph ServiceTier [Business Logic Tier]
-        IngestionSvc[Ingestion Service]
-        RetrievalSvc[Retrieval Service]
-        GenerationSvc[Generation Service]
+        StorageSvc[Storage Service<br/>app/services/storage.py]
+        IngestionSvc[Ingestion Pipeline<br/>app/services/ingestion.py]
+        RetrievalSvc[Retrieval Service<br/>app/services/retrieval.py]
+        GenerationSvc[Generation Service<br/>app/services/generation.py]
     end
 
     subgraph WorkerTier [Worker Tier]
-        CeleryWorker[Celery Worker Cluster]
+        CeleryWorker[Celery Task Worker<br/>app/workers/tasks.py]
     end
 
     subgraph PersistenceTier [Persistence Tier]
@@ -129,12 +130,15 @@ flowchart TD
     FastAPIApp --> CoreConfig
     FastAPIApp --> CoreDB
     HealthEndpoint --> CoreDB
-    DocEndpoint --> IngestionSvc
+    DocEndpoint --> StorageSvc
+    DocEndpoint --> RedisStore
+    DocEndpoint --> CoreDB
     QueryEndpoint --> RetrievalSvc
     QueryEndpoint --> GenerationSvc
 
-    IngestionSvc --> RedisStore
     RedisStore --> CeleryWorker
+    CeleryWorker --> StorageSvc
+    CeleryWorker --> IngestionSvc
     CeleryWorker --> Postgres
 
     RetrievalSvc --> Postgres

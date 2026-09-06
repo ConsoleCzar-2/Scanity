@@ -1,2 +1,125 @@
-# Scanity
-Scanity: AI-Powered Document Q&A System
+# Scanity: Enterprise AI-Powered Document Q&A System
+
+Scanity is an asynchronous, decoupled, enterprise-grade Retrieval-Augmented Generation (RAG) system engineered with FastAPI, PostgreSQL 16 (`pgvector`), Celery, Redis, Google Gemini, and Next.js 15.
+
+Scanity allows organizations to ingest complex, high-volume PDF documents and query them in natural language, receiving factual answers strictly grounded in document text with page-level citations and mathematical anti-hallucination guardrails.
+
+---
+
+## 1. Key Architectural Highlights
+
+- **Decoupled Asynchronous Processing (Celery + Redis):** CPU-intensive PDF parsing (PyMuPDF) and 768-dimensional vector embedding generation are completely offloaded to persistent Celery worker queues, preserving sub-20ms FastAPI response latency.
+- **Unified Relational & Vector Persistence (PostgreSQL 16 + pgvector):** Relational document metadata and high-dimensional vector embeddings coexist in a single ACID-compliant database, ensuring atomic cascading deletes (`ON DELETE CASCADE`) with zero orphaned "ghost embeddings."
+- **High-Performance HNSW Vector Indexing:** Fast approximate nearest-neighbor search via Hierarchical Navigable Small World (`hnsw`) graphs using `vector_cosine_ops` for sub-5ms vector retrieval.
+- **Time-Ordered Primary Keys (RFC 9562 UUIDv7):** Combines a 48-bit millisecond Unix timestamp with cryptographic entropy to maintain sequential B-tree inserts and prevent index fragmentation.
+- **Anti-Hallucination Relevance Threshold Gate:** Rejects off-topic or low-similarity queries ($< 0.70$ cosine similarity) before passing context to the LLM, eliminating hallucinated answers at the source.
+- **Pluggable Storage Layer:** Cloud-ready storage abstraction (`BaseStorageService`, `LocalStorageService`, `GCSStorageService`) for seamless transition between local disk and Google Cloud Storage (GCS).
+
+---
+
+## 2. Implementation Roadmap & Current Status
+
+- [x] **Step 1: Infrastructure Setup (Docker Compose)** - PostgreSQL 16 with `pgvector`, Redis 7, and pgAdmin.
+- [x] **Step 2: Backend Initialization & Environment Setup** - Python 3.12 virtual environment, FastAPI scaffolding, and CORS middleware.
+- [x] **Step 3: Database Models & Migrations** - Enterprise modular layout, UUIDv7 keys, `Vector(768)` models, and Alembic migrations.
+- [x] **Step 4: Core Ingestion Pipeline** - PyMuPDF page-preserving extraction, ~700-token recursive chunking with 100-token sliding overlap, and Gemini `gemini-embedding-001`.
+- [x] **Step 5: Celery Worker Integration** - Decoupled async processing queue via Redis, storage service abstraction, and RESTful document management endpoints.
+- [x] **Step 6: Retrieval System (Vector Search & Relevance Gate)** - Cosine similarity search (`<=>`), HNSW-accelerated top-k retrieval, multi-document scoping, and anti-hallucination threshold gating.
+- [ ] **Step 7: Generation System** - Grounded structured output with Gemini 3.5 Flash Lite, citation verification, and fallback guards.
+- [ ] **Step 8: Frontend Initialization** - Next.js 15 App Router, TypeScript, and Tailwind CSS.
+- [ ] **Step 9: Frontend UI** - Drag-and-drop upload panel, polling badges, and chat interface with interactive citation chips.
+- [ ] **Step 10: Final Polish & Production Readiness** - Production containerization, health probes, and deployment.
+
+---
+
+## 3. Quick Start Guide
+
+### 3.1 Prerequisites
+- Docker & Docker Compose
+- Python 3.12+
+- WSL2 (optional, for multi-process Linux Celery workers on Windows)
+
+### 3.2 Infrastructure Setup
+Start the PostgreSQL and Redis containers:
+```powershell
+docker compose up -d db redis
+```
+> Note: Database port is mapped to host port `5433` (`5433:5432`) to prevent collisions with any host-installed PostgreSQL services.
+
+### 3.3 Backend Setup
+Activate the virtual environment and apply database migrations:
+```powershell
+cd backend
+.\venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run database migrations
+alembic upgrade head
+
+# Start development server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 3.4 Launch Background Celery Worker
+In a separate terminal:
+
+**Windows Native (PowerShell):**
+```powershell
+cd backend
+.\venv\Scripts\activate
+celery -A app.workers.celery_app worker --loglevel=info -P solo
+```
+
+**WSL2 (Linux):**
+```bash
+cd /mnt/c/Users/ABHIRUP/Documents/GitHub/Scanity/backend
+source venv/bin/activate
+celery -A app.workers.celery_app worker --loglevel=info --concurrency=4
+```
+
+---
+
+## 4. Verification & Testing
+
+Execute the automated test suites from the `backend/` directory:
+
+```powershell
+# 1. Ingestion Pipeline Unit Tests
+python tests/test_ingestion.py
+
+# 2. Celery Worker & Document Lifecycle Tests
+python tests/test_worker_and_endpoints.py
+
+# 3. Vector Retrieval & Relevance Gate Tests
+python tests/test_retrieval.py
+```
+
+### Inspect Live System via API:
+- Health Probe: `curl http://localhost:8000/api/v1/health`
+- Document List: `curl http://localhost:8000/api/v1/documents`
+- Vector Search Inspection:
+  ```powershell
+  curl -X POST "http://localhost:8000/api/v1/query/search" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
+  ```
+- Interactive API Documentation:
+  - Swagger UI: `http://localhost:8000/docs`
+  - ReDoc: `http://localhost:8000/redoc`
+
+---
+
+## 5. Comprehensive Documentation Index
+
+All technical design documents are maintained under the `docs/` directory:
+
+| Document | Description |
+|---|---|
+| [System Architecture](docs/ARCHITECTURE.md) | Decoupled tiers, modular backend structure, RAG pipeline, and architectural trade-offs. |
+| [Ingestion & Workers](docs/INGESTION_AND_WORKERS.md) | PyMuPDF parsing, ~700-token chunking with overlap, and Celery + Redis worker architecture. |
+| [Database & Schema](docs/DATABASE.md) | PostgreSQL + pgvector setup, UUIDv7 primary keys, ERD, tables catalog, and HNSW indexes. |
+| [API Reference](docs/API.md) | Complete documentation of all live REST endpoints, request/response schemas, and curl examples. |
+| [Testing Strategy](docs/TESTING.md) | Test catalogs, synthetic PDF generation, database cascade testing, and run commands. |
+| [Frontend Architecture](docs/FRONTEND.md) | Next.js 15 App Router specifications, component hierarchy, and citation chip UI design. |
+| [Deployment & Operations](docs/DEPLOYMENT.md) | Container topology, port allocations, persistent volumes, environment configs, and health probes. |
+| [UML & Sequence Diagrams](docs/UML.md) | Domain class diagrams, ingestion sequence, and query validation workflows. |

@@ -25,30 +25,90 @@ Scanity adheres to a multi-tiered verification strategy designed to ensure deter
 | `test_embedding_service()` | `GeminiEmbeddingService` | Verifies vector dimensionality (`VECTOR_DIMENSION`, default 768) and Euclidean unit length ($\|v\|_2 \approx 1.0$). |
 | `test_end_to_end_pipeline()` | `IngestionPipeline` | Tests complete flow: `PDF bytes -> IngestionResult -> EmbeddedChunks`. |
 
+### 2.2 Worker & Document Endpoints Lifecycle Tests (`backend/tests/test_worker_and_endpoints.py`)
+
+| Test Phase | Target Component | Verification Criteria |
+|---|---|---|
+| `[1/7] Upload` | `POST /documents/upload` | Form-data PDF validation, storage persistence, and HTTP 202 Accepted response. |
+| `[2/7] Worker Processing` | `process_pdf_task` | State transitions: `pending` -> `processing` -> `ready` with accurate page counts. |
+| `[3/7] pgvector Persistence` | `DocumentChunk` | Verifies chunk records in PostgreSQL with 768-dimensional float embeddings. |
+| `[4/7] Status Polling` | `GET /{id}/status` | Validates accurate document status, page counts, and total chunks payload. |
+| `[5/7] Document Listing` | `GET /documents` | Validates paginated list response containing uploaded document IDs. |
+| `[6/7] Cascade Deletion` | `DELETE /{id}` | Atomically wipes DB record, cascades deletion to all chunks/embeddings, and deletes file from disk. |
+| `[7/7] Edge Cases` | Error Boundaries | Tests rejection of invalid extensions (.txt), empty uploads, and non-existent 404 UUIDs. |
+
+### 2.3 Retrieval System & Relevance Gate Tests (`backend/tests/test_retrieval.py`)
+
+| Test Phase | Target Component | Verification Criteria |
+|---|---|---|
+| `[1/6] Embedding Generation` | `RetrievalService.embed_query` | Generates 768-dimensional float embedding with Euclidean unit normalization. |
+| `[2/6] Semantic Ranking` | `RetrievalService.search` | Top-k KNN retrieval using pgvector `<=>` ranks relevant page #1 with high similarity. |
+| `[3/6] Document Scoping` | `document_ids` filter | Enforces multi-document scoping; 100% of returned chunks match the target document ID. |
+| `[4/6] Relevance Gate` | Anti-hallucination filter | Rejects off-topic queries ($< 0.70$ similarity), returning `meets_threshold=False` and suppressing chunks. |
+| `[5/6] Math Consistency` | Distance transformation | Validates invariant relation $s = 1 - d$ across all distance values. |
+| `[6/6] REST API Search` | `POST /query/search` | Tests FastAPI endpoint returning 200 OK with ranked chunks and threshold flags. |
+
 ---
 
 ## 3. How to Execute Tests
 
-### 3.1 Run Automated Unit Tests
+### 3.1 Run Ingestion Unit Tests
 From the `backend/` directory with the virtual environment activated:
 ```powershell
 cd backend
 .\venv\Scripts\activate
 
-# Run the ingestion test suite
+# Run the ingestion unit test suite
 python tests/test_ingestion.py
+```
+
+### 3.2 Run Worker & Endpoint Lifecycle Tests
+```powershell
+cd backend
+.\venv\Scripts\activate
+
+# Run the worker and document endpoints test suite
+python tests/test_worker_and_endpoints.py
 ```
 
 #### Expected Test Output:
 ```
-Running Ingestion Pipeline Test Suite...
+================================================================
+Testing Step 5: Celery Worker & Document Endpoints Lifecycle
+================================================================
+PASS [1/7]: Uploaded document with status 'pending' (HTTP 202).
+PASS [2/7]: Worker processed 3 pages into 3 chunks.
+PASS [3/7]: Verified 3 chunks in PostgreSQL with 768-dim embeddings.
+PASS [4/7]: GET /{id}/status returned 'ready' with 3 chunks.
+PASS [5/7]: GET /api/v1/documents successfully listed documents.
+PASS [6/7]: DELETE /{id} deleted DB record, cascaded all pgvector chunks, and deleted disk file.
+PASS [7/7]: Edge cases handled correctly (invalid extensions, empty uploads, 404 lookups).
 
-PASS: test_pdf_parser successfully extracted 3 pages with clean text and page numbers.
-PASS: test_recursive_chunker generated 3 chunks with verified sliding overlap.
-PASS: test_embedding_service generated 768-dimensional normalized vectors.
-PASS: test_end_to_end_pipeline successfully processed 'whitepaper.pdf' (3 pages, 3 embedded chunks).
+ALL STEP 5 AUTOMATED TESTS PASSED SUCCESSFULLY!
+```
 
-ALL INGESTION TESTS PASSED SUCCESSFULLY!
+### 3.3 Run Retrieval System & Relevance Gate Tests
+```powershell
+cd backend
+.\venv\Scripts\activate
+
+# Run the retrieval system test suite
+python tests/test_retrieval.py
+```
+
+#### Expected Test Output:
+```
+================================================================
+Testing Step 6: Retrieval System & Relevance Threshold Gate
+================================================================
+PASS [1/6]: Query embedding generated (768-dim, unit norm=1.0000).
+PASS [2/6]: Semantic search ranked Page 1 #1 (similarity: 0.7624).
+PASS [3/6]: Document scoping verified (100% of chunks isolated to scoped document).
+PASS [4/6]: Anti-hallucination gate triggered: off-topic query rejected (top_similarity: 0.6106 < 0.70).
+PASS [5/6]: Mathematical consistency of cosine similarity transformation verified.
+PASS [6/6]: POST /api/v1/query/search returned 200 OK with Page 2 ranked #1.
+
+ALL STEP 6 RETRIEVAL TESTS PASSED SUCCESSFULLY!
 ```
 
 ---

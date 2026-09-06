@@ -174,9 +174,65 @@ Deletes a document from the database (atomically cascading deletion to all chunk
 
 ---
 
-## 4. Scaffolded Endpoints (Planned for Steps 6 – 7)
+### 3.6 Vector Search & Relevance Gate Inspection
+Embeds a question, performs k-Nearest Neighbors (KNN) search in PostgreSQL via pgvector, applies multi-document scoping, and evaluates the anti-hallucination relevance threshold gate.
 
-### 4.1 Semantic Query & Grounded Answer (Step 6 & 7)
+* **Method:** `POST`
+* **Path:** `/api/v1/query/search`
+* **Tags:** `Query`
+* **Authentication:** None
+* **Request Body:**
+```json
+{
+  "question": "What was the reported operating profit margin for Q3?",
+  "document_ids": ["01a074e4-6feb-79c5-a1b0-5fff4b876659"],
+  "top_k": 3,
+  "threshold": 0.70
+}
+```
+
+#### Response (200 OK — Relevance Threshold Cleared):
+```json
+{
+  "query": "What was the reported operating profit margin for Q3?",
+  "top_similarity": 0.7624,
+  "meets_threshold": true,
+  "threshold": 0.70,
+  "chunks": [
+    {
+      "chunk_id": "01a074e4-6feb-79c5-a1b0-5fff4b876660",
+      "document_id": "01a074e4-6feb-79c5-a1b0-5fff4b876659",
+      "original_filename": "financial_report_2026.pdf",
+      "page_number": 1,
+      "chunk_index": 0,
+      "content": "=== Page 1: Corporate Financial Performance ===\nIn the third quarter of 2026, total operating revenue reached 48.2 million dollars...",
+      "similarity_score": 0.7624
+    }
+  ]
+}
+```
+
+#### Response (200 OK — Anti-Hallucination Gate Rejection):
+```json
+{
+  "query": "How to bake chocolate chip sourdough bread?",
+  "top_similarity": 0.6106,
+  "meets_threshold": false,
+  "threshold": 0.70,
+  "chunks": []
+}
+```
+
+#### Curl Command:
+```powershell
+curl -X POST "http://localhost:8000/api/v1/query/search" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
+```
+
+---
+
+## 4. Scaffolded Endpoints (Planned for Step 7)
+
+### 4.1 Grounded Q&A Generation with Citations (Step 7)
 
 #### `POST /api/v1/query`
 Answers natural language questions strictly grounded in the uploaded documents.

@@ -170,7 +170,7 @@ async def test_full_document_lifecycle():
 
         print("PASS [7/7]: Edge cases handled correctly (invalid extensions, empty uploads, 404 lookups).")
 
-    print("\nALL STEP 5 AUTOMATED TESTS PASSED SUCCESSFULLY!\n")
+    print("\nALL DOCUMENT LIFECYCLE TESTS PASSED SUCCESSFULLY!\n")
 
 
 if __name__ == "__main__":

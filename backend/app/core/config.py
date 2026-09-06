@@ -57,7 +57,13 @@ class Settings:
     VECTOR_DIMENSION: int = int(os.getenv("VECTOR_DIMENSION", "768"))
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY", None)
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-3.5-flash-lite")
+    MULTIMODAL_EMBEDDING_MODEL: str = os.getenv("MULTIMODAL_EMBEDDING_MODEL", "gemini-embedding-002")
     CHUNK_SIZE_TOKENS: int = int(os.getenv("CHUNK_SIZE_TOKENS", "700"))
     CHUNK_OVERLAP_TOKENS: int = int(os.getenv("CHUNK_OVERLAP_TOKENS", "100"))
+
+    # Retrieval & Anti-Hallucination Guardrails
+    RELEVANCE_THRESHOLD: float = float(os.getenv("RELEVANCE_THRESHOLD", "0.70"))
+    DEFAULT_TOP_K: int = int(os.getenv("DEFAULT_TOP_K", "5"))
 
 settings = Settings()
