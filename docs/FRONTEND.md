@@ -103,13 +103,13 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
 ### 4.1 `UploadDropzone`
 * **File Validation:**
   * Enforces `application/pdf` MIME type.
-  * Rejects files larger than `MAX_FILE_SIZE` (default: 25MB).
-  * Computes client-side checksum or displays instant visual feedback.
+  * Rejects files larger than `MAX_FILE_SIZE` (default: 50MB).
+  * Supports simultaneous **multi-file upload** (batch selection and multi-file drag-and-drop).
 * **Upload State Machine:**
-  * `idle`: Shows drag-and-drop invitation.
-  * `dragging`: Border highlights with accent color.
-  * `uploading`: Shows indeterminate progress bar.
-  * `success`: Triggers callback to parent to add document ID to tracking queue.
+  * `idle`: Shows drag-and-drop invitation with multi-file support notice.
+  * `dragging`: Border highlights with high-contrast accent ring.
+  * `uploading`: Dispatches batch upload requests iteratively to `POST /api/v1/documents/upload` and enqueues newly returned document IDs into the live polling registry.
+  * `success`: Triggers callback to parent to add document IDs to tracking queue.
   * `error`: Displays actionable error message (e.g., "File is not a valid PDF").
 
 ### 4.2 `DocumentList` & `StatusBadge`
@@ -127,9 +127,13 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
   * `failed` (Rose Red): Processing encountered an unrecoverable format or parsing error (hover for error detail).
 
 ### 4.3 `ChatContainer`, `MessageItem`, & `QueryInput`
-* **Progressive Streaming Answers:**
-  * Simulates a real-time token typewriter stream as answers are synthesized, eliminating blank wait periods.
-  * Verified citation chips smoothly pop into view upon stream completion.
+* **Progressive Pipeline Stepper Feedback:**
+  * To prevent silent wait periods during backend pipeline execution (~4.5s round trip), an assistant card renders immediately with a rotating loader and progressive phase descriptions:
+    * **0.0s:** *"Generating query embedding vector..."*
+    * **1.2s:** *"Scanning pgvector cosine index across document chunks..."*
+    * **2.4s:** *"Synthesizing verified grounded response with Gemini 3.5 Flash Lite..."*
+* **Typewriter Pacing:**
+  * Once the response payload is received from the backend, a smooth token-by-token typewriter pacing (40ms per token) renders the prose before snapping verified citation tags into view.
 * **Message Structure:**
   * Displays user prompt aligned to right in dark slate bubble (`bg-slate-900 border-slate-800`).
   * Displays assistant answer card in high-contrast panel (`bg-slate-900/90 border-slate-800`).
@@ -155,13 +159,21 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
   * The text displays: *"Not found in the provided document(s)."*
   * Explains that no text chunks in the selected documents met the similarity threshold, preventing hallucinations.
 
-### 4.6 Navigation Drawer & System Telemetry (`SidebarDrawer` & `AdminLogsModal`)
-* **Sidebar Drawer:**
-  * Collapsible left-hand navigation panel triggered via hamburger menu icon (`Menu`).
-  * Displays conversation sessions, "New Conversation" trigger, and documentation navigation links.
-* **User Profile & Admin Telemetry Modal:**
-  * Top-right user avatar with dropdown menu.
-  * Displays system telemetry: PostgreSQL status, Redis connection, Celery worker concurrency, pgvector dimensions, and query audit stats.
+### 4.6 Navigation Drawer & Admin Modify Parameters (`SidebarDrawer`)
+* **Navigation Links & Sessions:**
+  * Collapsible left-hand drawer containing conversation sessions and documentation links.
+* **Admin-Only "Modify Parameters" Sliders:**
+  * **Minimum Relevance Gate Threshold Slider:** Range 0.50 to 0.95 with visible min/max labels, compact handles, and distinct track colors.
+  * **Top-K Retrieved Chunks Slider:** Range 1 to 20 with real-time numeric counter.
+  * "Reset to Defaults" action restoring 0.70 threshold and 5 chunks.
+  * Restricted via Role-Based Access Control (RBAC): hidden for standard customer accounts.
+
+### 4.7 Landing Page Card-Stacking Scroll Dynamics (`LandingPage.tsx`)
+* **Skiper UI (`skiper16`) Stacking Mechanics:**
+  * The 4 core architectural cards (pgvector HNSW, Celery + Redis, Gemini 3.5 Flash Lite, Anti-Hallucination Gate) use sticky positioning (`sticky top-28`).
+  * A passive scroll listener calculates each card's viewport progress. As the user scrolls, each preceding card scales down slightly (e.g. scale 0.95, 0.90) and rotates subtly as the next card stacks directly on top.
+* **Hero Section Transition:**
+  * The hero headline smoothly scales backward and fades in opacity as the architecture cards rise into the foreground.
 
 ---
 
@@ -231,3 +243,41 @@ NEXT_PUBLIC_POLL_INTERVAL_MS=2000
   * All interactive elements have descriptive `aria-label` attributes.
   * Keyboard navigation for modal dismissal (`Esc`), upload triggering (`Enter`/`Space`), and query submission (`Enter`).
   * Contrast ratios meet WCAG 2.1 AA standards for both light and dark modes.
+
+---
+
+## 8. Hydration Safety & State Synchronization (React 19 & Next.js 15)
+
+In Next.js 15 App Router applications, reading client-side storage (`window.localStorage`) inside component initialization (`useState(() => getCurrentUser())`) creates hydration divergence:
+- During Server-Side Rendering (SSR), `window` is undefined, rendering null user state.
+- During client hydration, `localStorage` returns the stored user JSON, producing a markup mismatch error ("Hydration failed because the server rendered HTML didn't match the client").
+
+### Solution Architecture
+Scanity implements React 19's native `useSyncExternalStore` hook paired with a referentially stable snapshot cache in `frontend/lib/auth.ts`:
+1. **Subscription Mechanism**: `subscribeToUser(callback)` listens to browser `storage` events and custom `auth:change` dispatch events.
+2. **Referential Snapshot Cache (`getSnapshot`)**:
+   ```typescript
+   let cachedUserRaw: string | null = null;
+   let cachedUserObj: UserSession | null = null;
+
+   export function getCurrentUser(): UserSession | null {
+     if (typeof window === 'undefined') return null;
+     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+     if (raw !== cachedUserRaw) {
+       cachedUserRaw = raw;
+       cachedUserObj = raw ? JSON.parse(raw) : null;
+     }
+     return cachedUserObj;
+   }
+   ```
+3. **SSR Safety (`getServerSnapshot`)**: Always returns `null` on the server.
+4. **Hook Consumption (`frontend/app/chat/page.tsx`)**:
+   ```typescript
+   const currentUser = useSyncExternalStore(
+     subscribeToUser,
+     getCurrentUser,
+     () => null
+   );
+   ```
+This pattern guarantees zero hydration mismatches, ensures reactivity across browser tabs, and prevents React 19 infinite re-render cycles.
+

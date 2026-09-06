@@ -8,12 +8,13 @@ Scanity allows organizations to ingest complex, high-volume PDF documents and qu
 
 ## 1. Key Architectural Highlights
 
-- **Decoupled Asynchronous Processing (Celery + Redis):** CPU-intensive PDF parsing (PyMuPDF) and 768-dimensional vector embedding generation are completely offloaded to persistent Celery worker queues, preserving sub-20ms FastAPI response latency.
+- **Decoupled Asynchronous Processing (Celery + Redis):** CPU-intensive PDF parsing (PyMuPDF) and vector embedding generation are completely offloaded to persistent Celery worker queues, preserving sub-20ms FastAPI response latency.
 - **Unified Relational & Vector Persistence (PostgreSQL 16 + pgvector):** Relational document metadata and high-dimensional vector embeddings coexist in a single ACID-compliant database, ensuring atomic cascading deletes (`ON DELETE CASCADE`) with zero orphaned "ghost embeddings."
 - **High-Performance HNSW Vector Indexing:** Fast approximate nearest-neighbor search via Hierarchical Navigable Small World (`hnsw`) graphs using `vector_cosine_ops` for sub-5ms vector retrieval.
 - **Time-Ordered Primary Keys (RFC 9562 UUIDv7):** Combines a 48-bit millisecond Unix timestamp with cryptographic entropy to maintain sequential B-tree inserts and prevent index fragmentation.
 - **Anti-Hallucination Relevance Threshold Gate:** Rejects off-topic or low-similarity queries ($< 0.70$ cosine similarity) before passing context to the LLM, eliminating hallucinated answers at the source.
-- **Pluggable Storage Layer:** Cloud-ready storage abstraction (`BaseStorageService`, `LocalStorageService`, `GCSStorageService`) for seamless transition between local disk and Google Cloud Storage (GCS).
+- **Modern Next.js 15 App Router Architecture:** Clean separation into public landing (`/` with Skiper-style card stacking scroll), authentication (`/login` with RBAC demo accounts and self-registration), and enterprise workspace (`/chat` with live document scoping and progressive pipeline feedback).
+- **Rate-Limit & Production Resilient Ingestion:** Automatic exponential backoff for Google API 429 quota exhaustion, multi-file batch upload, and roadmap for local on-premise embedding using `intfloat/e5-large` (1024-D).
 
 ---
 
@@ -28,7 +29,8 @@ Scanity allows organizations to ingest complex, high-volume PDF documents and qu
 - [x] **Step 7: Generation System (Grounded Q&A & Citation Validation)** - Grounded structured output with Gemini 3.5 Flash Lite, post-hoc citation validation, and audit database persistence.
 - [x] **Step 8: Frontend Initialization** - Next.js 15 App Router, TypeScript 5, Tailwind CSS v4, typed API client, and enterprise dark dashboard shell.
 - [x] **Step 9: Frontend UI Components & Interactive Experience** - Drag-and-drop upload panel, adaptive polling badges, navigation drawer, telemetry modal, progressive answer streaming, and verified citation popovers.
-- [ ] **Step 10: Final Polish & Production Readiness** - Production containerization, health probes, and deployment.
+- [x] **Step 10: Production Hardening, Rate-Limit Resilience & UX Refinements** - Skiper UI card-stacking scroll on landing page, admin parameter tuning sliders, multi-file PDF upload, React 19 hydration synchronization, AFC deprecation fix, dynamic API 429 backoff, and progressive pipeline stepper.
+- [ ] **Step 11: Future Extensions** - Local high-performance embedding model (`intfloat/e5-large`), Server-Sent Events (SSE) streaming, hybrid full-text search, and multi-tenant JWT auth.
 
 ---
 
@@ -95,7 +97,10 @@ npm run dev
 npm run build
 npm run lint
 ```
-The frontend is accessible at `http://localhost:3000` with live health monitoring connected to the FastAPI backend.
+The frontend is accessible at:
+- **Landing Page**: `http://localhost:3000/` (Features technical capability ledger and Skiper card-stacking scroll animation)
+- **Authentication**: `http://localhost:3000/login` (Includes quick demo credentials for Admin and Customer roles, plus customer self-registration)
+- **Workspace**: `http://localhost:3000/chat` (Multi-file document catalog, real-time scoping, Admin Modify Parameters sliders, and progressive Q&A)
 
 ---
 

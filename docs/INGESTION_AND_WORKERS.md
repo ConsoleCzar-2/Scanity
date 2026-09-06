@@ -57,12 +57,36 @@ flowchart LR
 * **Model:** `gemini-embedding-001` (configured via `settings.EMBEDDING_MODEL`).
 * **Dimension:** Fixed **768** float values per vector (`VECTOR_DIMENSION`), matching the PostgreSQL `Vector(768)` column.
 * **Batching:** Groups text chunks into batches of up to 50 items per API request to respect payload limits and optimize network round-trips.
+* **Rate-Limit Resilience & Quota Backoff:**
+  * Free-tier embedding APIs enforce strict rate limits (e.g., 15-80 RPM, 30K TPM).
+  * The service includes dynamic error inspection: when Google GenAI returns `429 RESOURCE_EXHAUSTED`, the error payload is regex-parsed for Google's suggested `retryDelay` (typically 14-30s).
+  * The ingestion thread sleeps for the exact duration requested before retrying (up to 4 attempts).
+  * A 1.0s inter-batch throttle is enforced between batch requests to stay comfortably within rate quotas during bulk multi-page document ingestion.
+  * When `use_mock=False`, silent mock degradation is strictly disabled, ensuring 100% genuine neural embeddings are written to the database.
 * **Deterministic Mock Fallback:**
   If `GEMINI_API_KEY` is not provided or set to a placeholder, the service generates deterministic, Euclidean unit-normalized 768-dimensional float vectors derived from the SHA-256 hash of the chunk content:
   $$\|v\|_2 = \sqrt{\sum v_i^2} \approx 1.0$$
   This allows testing extraction, chunking, database persistence, and cosine distance queries (`<=>`) completely offline without requiring paid API quota.
 
-### 2.4 Pipeline Facade (`IngestionPipeline`)
+### 2.4 Local Embedding Engine Alternative (`intfloat/e5-large`)
+* **Motivation:** While cloud-hosted embedding APIs offer instant setup, high-volume production deployments frequently transition to a self-hosted local model like `intfloat/e5-large`.
+* **Technical Specifications:**
+  * Base Model: 24-layer BERT-large (~335M parameters).
+  * Embedding Vector: **1024 dimensions** (dense float, L2 unit-normalized).
+  * Context Window: 512 tokens.
+  * Benchmark: Elite ranking on MTEB retrieval and semantic search leaderboards.
+* **Operational Advantages:**
+  1. **Zero Quota Exhaustion:** Local execution is immune to HTTP 429 rate limit exceptions, allowing large catalogs (hundreds of PDF pages) to ingest continuously at hardware speed.
+  2. **Sub-50ms Latency:** Local inference bypasses HTTPS WAN round trips, reducing embedding time per batch from ~1000ms to ~15-40ms.
+  3. **Enterprise IP Protection:** In EDA environments like Cadence, proprietary silicon architecture specs and hardware documentation never leave the local machine/VPC.
+  4. **Cost:** Zero per-token API charges.
+* **Integration Requirements:**
+  * Uses `sentence-transformers` with mandatory task prefixing:
+    * Query prefix: `"query: "`
+    * Chunk prefix: `"passage: "`
+  * Requires database migration altering `document_chunks.embedding` from `vector(768)` to `vector(1024)`.
+
+### 2.5 Pipeline Facade (`IngestionPipeline`)
 Coordinates the entire lifecycle:
 ```python
 from app.services.ingestion import IngestionPipeline

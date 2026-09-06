@@ -49,13 +49,27 @@ export function getStoredUsers(): StoredUser[] {
   }
 }
 
+let cachedUserRaw: string | null = null;
+let cachedUserObj: UserProfile | null = null;
+
 export function getCurrentUser(): UserProfile | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STORAGE_SESSION_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    if (!raw) {
+      cachedUserRaw = null;
+      cachedUserObj = null;
+      return null;
+    }
+    if (raw === cachedUserRaw && cachedUserObj !== null) {
+      return cachedUserObj;
+    }
+    cachedUserRaw = raw;
+    cachedUserObj = JSON.parse(raw);
+    return cachedUserObj;
   } catch {
+    cachedUserRaw = null;
+    cachedUserObj = null;
     return null;
   }
 }

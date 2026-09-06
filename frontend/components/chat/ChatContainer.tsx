@@ -43,7 +43,7 @@ export function ChatContainer({
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `asst-${Date.now()}`;
 
-    // Add user message
+    // Add user message AND immediate assistant thinking placeholder
     const userMsg: ChatMessage = {
       id: userMsgId,
       sender: 'user',
@@ -51,8 +51,38 @@ export function ChatContainer({
       timestamp: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const initialAssistantMsg: ChatMessage = {
+      id: assistantMsgId,
+      sender: 'assistant',
+      text: '',
+      timestamp: new Date().toISOString(),
+      isThinking: true,
+      thinkingStep: 'Generating query embedding vector...',
+    };
+
+    setMessages((prev) => [...prev, userMsg, initialAssistantMsg]);
     setIsLoading(true);
+
+    // Progressive status updates while backend RAG pipeline runs
+    const stepTimer1 = setTimeout(() => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId && msg.isThinking
+            ? { ...msg, thinkingStep: 'Scanning pgvector cosine index across document chunks...' }
+            : msg
+        )
+      );
+    }, 1200);
+
+    const stepTimer2 = setTimeout(() => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId && msg.isThinking
+            ? { ...msg, thinkingStep: 'Synthesizing verified grounded response with Gemini 3.5 Flash Lite...' }
+            : msg
+        )
+      );
+    }, 2400);
 
     try {
       // Prepare scoped document IDs if any selected
@@ -67,24 +97,13 @@ export function ChatContainer({
         threshold: threshold,
       });
 
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+
       const fullAnswer = queryResponse.answer;
       const isFallback =
         !queryResponse.is_grounded ||
         fullAnswer.toLowerCase().includes('not found in the provided document');
-
-      // Initialize assistant placeholder message
-      const initialAssistantMsg: ChatMessage = {
-        id: assistantMsgId,
-        sender: 'assistant',
-        text: '',
-        timestamp: new Date().toISOString(),
-        isGrounded: queryResponse.is_grounded,
-        confidence: queryResponse.confidence,
-        citations: [],
-        isStreaming: true,
-      };
-
-      setMessages((prev) => [...prev, initialAssistantMsg]);
 
       // If fallback, display immediately without streaming
       if (isFallback) {
@@ -94,6 +113,9 @@ export function ChatContainer({
               ? {
                   ...msg,
                   text: fullAnswer,
+                  isThinking: false,
+                  isGrounded: false,
+                  confidence: 0,
                   citations: queryResponse.citations || [],
                   isStreaming: false,
                 }
@@ -104,14 +126,32 @@ export function ChatContainer({
         return;
       }
 
-      // Progressive token-by-token streaming typewriter effect
+      // Switch to streaming text mode
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? {
+                ...msg,
+                text: '',
+                isThinking: false,
+                isGrounded: queryResponse.is_grounded,
+                confidence: queryResponse.confidence,
+                citations: [],
+                isStreaming: true,
+              }
+            : msg
+        )
+      );
+
+      // Natural token-by-token typewriter effect
       const tokens = fullAnswer.split(' ');
       let currentWordIndex = 0;
       let streamedText = '';
 
       const streamInterval = setInterval(() => {
         if (currentWordIndex < tokens.length) {
-          streamedText += (currentWordIndex > 0 ? ' ' : '') + tokens[currentWordIndex];
+          const word = tokens[currentWordIndex];
+          streamedText += (currentWordIndex > 0 ? ' ' : '') + word;
           currentWordIndex++;
 
           setMessages((prev) =>
@@ -136,8 +176,10 @@ export function ChatContainer({
           );
           setIsLoading(false);
         }
-      }, 35);
+      }, 40);
     } catch (err: unknown) {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
       const errorMsg =
         err instanceof Error
           ? err.message

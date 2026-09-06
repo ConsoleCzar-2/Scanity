@@ -281,3 +281,39 @@ curl http://localhost:8000/api/v1/health
   "message": "Scanity API and Database are fully operational!"
 }
 ```
+
+---
+
+## 6. Frontend & End-to-End System Testing
+
+### 6.1 Frontend Linting & Production Build Verification
+```powershell
+cd frontend
+
+# Verify zero ESLint errors or React 19 warnings
+npm run lint
+
+# Compile all Next.js 15 routes and verify TypeScript types
+npm run build
+```
+
+### 6.2 End-to-End Integration Verification Script
+A comprehensive test script programmatically validates the complete pipeline (synthetic PDF generation, Celery background ingestion, 768-D embedding storage in pgvector, grounded query execution, and anti-hallucination gate checks):
+```powershell
+cd backend
+.\venv\Scripts\python.exe C:\Users\ABHIRUP\.gemini\antigravity-ide\brain\f2fd5762-c9f9-4afc-be73-48cdea344165\scratch\test_pipeline_e2e.py
+```
+
+### 6.3 Live Grounded Query Test (Real Knowledge Base)
+With all 5 catalog chapters indexed with real neural vectors:
+```powershell
+# Query 1: Bit Stuffing (Expected Grounded Answer from Chap4)
+curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What is bit stuffing?\", \"top_k\": 3, \"threshold\": 0.70}'
+
+# Query 2: ALOHA Protocol (Expected Grounded Answer from Chap5)
+curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What is ALOHA?\", \"top_k\": 3, \"threshold\": 0.70}'
+
+# Query 3: Off-Topic / Hallucination Rejection (Expected Fallback)
+curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"How do airplanes generate aerodynamic lift?\", \"top_k\": 3, \"threshold\": 0.70}'
+```
+

@@ -2,10 +2,14 @@ import hashlib
 import logging
 import math
 import re
+import time
 from pathlib import Path
 from typing import List, Sequence, Union
-
 import pymupdf
+
+from google import genai
+from google.genai import types
+
 
 from app.core.config import settings
 from app.schemas.document import (
@@ -209,7 +213,6 @@ class GeminiEmbeddingService:
             self.use_mock = True
         else:
             try:
-                from google import genai
 
                 self.client = genai.Client(api_key=self.api_key)
                 logger.info(f"GeminiEmbeddingService initialized with model '{self.model_name}'.")
@@ -226,7 +229,6 @@ class GeminiEmbeddingService:
         dense embedding behavior (0.70-0.90 similarity for semantically related texts,
         < 0.65 for cross-domain/off-topic texts) for offline testing without paid API quota.
         """
-        import re
 
         def _hash_token(token: str) -> List[float]:
             h = hashlib.sha256(token.encode("utf-8")).digest()
@@ -276,24 +278,60 @@ class GeminiEmbeddingService:
         # Batch texts to respect Gemini API request limits
         for i in range(0, len(texts), self.batch_size):
             batch = list(texts[i : i + self.batch_size])
-            try:
-                # Try primary model name
-                response = self.client.models.embed_content(
-                    model=self.model_name,
-                    contents=batch,
-                )
-                if hasattr(response, "embeddings") and response.embeddings:
-                    for emb in response.embeddings:
-                        embeddings.append(emb.values)
-                else:
-                    logger.warning("Empty embeddings returned from Gemini API, falling back to mock.")
-                    embeddings.extend([self._generate_mock_vector(t) for t in batch])
-            except Exception as e:
-                logger.error(
-                    f"Error invoking Gemini embedding model '{self.model_name}': {e}. "
-                    "Falling back to mock embeddings for this batch."
-                )
-                embeddings.extend([self._generate_mock_vector(t) for t in batch])
+            max_retries = 4
+            success = False
+
+            for attempt in range(max_retries):
+                try:
+                    config = types.EmbedContentConfig(output_dimensionality=self.dimension)
+                    response = self.client.models.embed_content(
+                        model=self.model_name,
+                        contents=batch,
+                        config=config,
+                    )
+                    if hasattr(response, "embeddings") and response.embeddings:
+                        for emb in response.embeddings:
+                            embeddings.append(emb.values)
+                        success = True
+                        break
+                    else:
+                        raise ValueError("Empty embeddings returned from Gemini API")
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = (
+                        "429" in err_str
+                        or "RESOURCE_EXHAUSTED" in err_str
+                        or "Quota exceeded" in err_str
+                    )
+                    if is_rate_limit and attempt < max_retries - 1:
+                        # Extract wait time if Google provided retryDelay, or default to 25s + attempt * 15s
+                        wait_match = re.search(r"retry in (\d+(?:\.\d+)?)s", err_str, re.IGNORECASE) or re.search(r"retryDelay': '(\d+)s'", err_str)
+                        if wait_match:
+                            wait_seconds = int(float(wait_match.group(1))) + 3
+                        else:
+                            wait_seconds = 25 + (attempt * 15)
+
+                        logger.warning(
+                            f"Gemini embedding quota reached (429). Rate limit throttle waiting {wait_seconds}s before retry (attempt {attempt + 1}/{max_retries})..."
+                        )
+                        time.sleep(wait_seconds)
+                    else:
+                        if not self.use_mock and is_rate_limit:
+                            logger.error(
+                                f"Failed to embed batch with Gemini API ({e}) after {attempt + 1} attempts."
+                            )
+                            # In live API mode, re-raise rate limit errors so Celery task retries rather than poisoning vectors with mock data
+                            raise e
+                        logger.warning(
+                            f"Falling back to deterministic mock embeddings for batch of {len(batch)} chunks due to error: {e}"
+                        )
+                        embeddings.extend([self._generate_mock_vector(t) for t in batch])
+                        success = True
+                        break
+
+            # Smooth throttling between batches to prevent bursting the 100 RPM limit
+            if success and i + self.batch_size < len(texts):
+                time.sleep(1.0)
 
         return embeddings
 

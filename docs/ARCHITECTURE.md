@@ -136,6 +136,16 @@ backend/
 * **Decision:** Standardize all table primary keys on UUIDv7 (RFC 9562).
 * **Rationale:** Standard UUIDv4 values are completely random, scattering row inserts unpredictably across disk pages. In tables with thousands of document chunks, this causes massive **B-tree index fragmentation** and frequent page splits. UUIDv7 prefixes a 48-bit millisecond Unix timestamp to cryptographically random bytes, guaranteeing that records are **monotonically increasing**. This combines the sequential insertion speed of auto-incrementing integers (`BIGSERIAL`) with the security and uniqueness of UUIDs.
 
+### 3.4 Cloud Embeddings (`gemini-embedding-001`) vs. Local Embeddings (`intfloat/e5-large`)
+* **Current Implementation:** Cloud Google GenAI `gemini-embedding-001` projecting into 768-dimensional vector space.
+* **Production Roadmap Alternative:** Self-hosted local `intfloat/e5-large` (1024-dimensional normalized dense vectors via `sentence-transformers`).
+* **Trade-Off Analysis:**
+  1. **Rate Limits & Ingestion Bottlenecks:** Cloud API free and pay-as-you-go tiers enforce strict request quotas (e.g. 15-80 RPM, 30K TPM). When processing dense multi-page PDFs, batch calls can trigger HTTP 429 quota exhaustion, requiring exponential backoff and pacing delays. A local E5 model processes chunks continuously at hardware line speed with zero external quotas.
+  2. **Latency & Throughput:** Cloud APIs incur ~800ms-1200ms of HTTPS WAN round-trip latency per batch. In-process local inference takes ~15-40ms per batch on modern GPU/CPU hardware.
+  3. **Enterprise Privacy & Air-Gapped Operation:** In semiconductor design (Cadence context), defense, or finance, sensitive hardware designs and internal manuals cannot leave the local network boundary. Running `intfloat/e5-large` locally ensures 100% data sovereignty.
+  4. **Cost:** Local execution eliminates per-token API fees entirely.
+  5. **Schema Transition:** Switching to E5-large requires an Alembic migration altering `document_chunks.embedding` from `vector(768)` to `vector(1024)` and prefixing queries with `"query: "` and chunks with `"passage: "`.
+
 ---
 
 ## 4. Grounded RAG Pipeline Design
@@ -143,10 +153,10 @@ backend/
 ### 4.1 Ingestion Pipeline
 *(See [Document Ingestion & Workers](INGESTION_AND_WORKERS.md) for complete algorithmic details and benchmarks.)*
 
-1. **Upload & Staging:** PDF received via `POST /api/v1/documents/upload`. Stored on disk (`/uploads`) and recorded in `documents` with status `pending`.
+1. **Upload & Staging:** PDF received via `POST /api/v1/documents/upload` (supporting multi-file batch uploads). Stored on disk (`/uploads`) and recorded in `documents` with status `pending`.
 2. **Asynchronous Dispatch:** An ingestion task is enqueued to Redis via `process_pdf_task.delay(document_id, file_path)`.
 3. **Extraction & Chunking:** PyMuPDF extracts text per page. The text is chunked to ~700 tokens with 100-token overlap, preserving `page_number` and `chunk_index`.
-4. **Vector Embedding:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors.
+4. **Vector Embedding & Quota Resilience:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors. The ingestion pipeline includes automatic exponential backoff (parsing Google's `retryDelay` headers on HTTP 429) and a 1.0s throttle between batches to ensure robust processing. Status updates to `ready` upon completion.
 5. **Persistence & Indexing:** Chunks and embeddings are stored in `document_chunks`. The HNSW index enables sub-10ms nearest-neighbor retrieval. Status updates to `ready`.
 
 ### 4.2 Query, Guardrail & Generation Pipeline

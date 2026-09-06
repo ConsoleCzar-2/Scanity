@@ -67,7 +67,7 @@ export function LandingPage({
   const heroTranslateY = Math.min(scrollY * 0.28, 70);
 
   return (
-    <div className="min-h-screen bg-[#090b0e] text-slate-100 flex flex-col justify-between overflow-x-hidden selection:bg-indigo-600 selection:text-white">
+    <div className="min-h-screen bg-[#090b0e] text-slate-100 flex flex-col justify-between overflow-x-clip selection:bg-indigo-600 selection:text-white">
       {/* Edge-to-Edge Topbar */}
       <header className="sticky top-0 z-50 w-full border-b border-[#1c232f] bg-[#090b0e]/90 backdrop-blur-md h-14 flex items-center">
         <div className="w-full px-4 sm:px-8 flex items-center justify-between">
@@ -245,7 +245,7 @@ export function LandingPage({
 
           <div className="flex items-center gap-4">
             <a
-              href="https://github.com/ConsoleCzar-2/Scanity"
+              href="https://github.com/ConsoleCzar-2/"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
@@ -256,7 +256,7 @@ export function LandingPage({
 
           <div className="flex items-center gap-4">
             <a
-              href="https://github.com/ConsoleCzar-2/Scanity"
+              href="https://github.com/ConsoleCzar-2/Scanity/"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"

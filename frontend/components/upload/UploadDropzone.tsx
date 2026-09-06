@@ -14,53 +14,92 @@ interface UploadDropzoneProps {
 export function UploadDropzone({ onUploadSuccess, disabled = false }: UploadDropzoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgressText, setUploadProgressText] = useState<string>('Uploading...');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateAndUpload = async (file: File) => {
+  const validateAndUploadFiles = async (files: File[]) => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    // Validate MIME type and file extension
-    const isPdf =
-      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      setErrorMessage(`"${file.name}" is not a PDF. Only .pdf files are accepted.`);
-      return;
+    if (files.length === 0) return;
+
+    // Filter valid and invalid files
+    const validFiles: File[] = [];
+    const invalidErrors: string[] = [];
+
+    for (const file of files) {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        invalidErrors.push(`"${file.name}" is not a PDF.`);
+        continue;
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        invalidErrors.push(
+          `"${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB limit (${(file.size / (1024 * 1024)).toFixed(1)}MB).`
+        );
+        continue;
+      }
+      validFiles.push(file);
     }
 
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setErrorMessage(
-        `File exceeds maximum allowed size of ${MAX_FILE_SIZE_MB}MB (${(file.size / (1024 * 1024)).toFixed(1)}MB provided).`
-      );
+    if (invalidErrors.length > 0) {
+      setErrorMessage(invalidErrors.join(' '));
+    }
+
+    if (validFiles.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     try {
       setIsUploading(true);
-      const response = await api.uploadDocument(file);
-      setSuccessMessage(`"${response.original_filename}" queued for ingestion.`);
-      onUploadSuccess({
-        id: response.document_id,
-        original_filename: response.original_filename,
-        status: response.status,
-        page_count: null,
-        total_chunks: null,
-        uploaded_at: new Date().toISOString(),
-        processed_at: null,
-      });
+      let successCount = 0;
 
-      // Auto-clear success message after 4s
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 4000);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Upload failed. Check backend connection.';
-      setErrorMessage(msg);
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        setUploadProgressText(
+          validFiles.length > 1
+            ? `Uploading (${i + 1}/${validFiles.length}): ${file.name}...`
+            : `Uploading ${file.name}...`
+        );
+
+        try {
+          const response = await api.uploadDocument(file);
+          onUploadSuccess({
+            id: response.document_id,
+            original_filename: response.original_filename,
+            status: response.status,
+            page_count: null,
+            total_chunks: null,
+            uploaded_at: new Date().toISOString(),
+            processed_at: null,
+          });
+          successCount++;
+        } catch (err) {
+          const errDetail = err instanceof Error ? err.message : 'Upload failed';
+          invalidErrors.push(`Failed "${file.name}": ${errDetail}`);
+        }
+      }
+
+      if (successCount > 0) {
+        setSuccessMessage(
+          successCount === 1
+            ? `"${validFiles[0].name}" queued for ingestion.`
+            : `Successfully queued ${successCount} PDF(s) for ingestion.`
+        );
+        setTimeout(() => {
+          setSuccessMessage(null);
+        }, 4500);
+      }
+
+      if (invalidErrors.length > 0) {
+        setErrorMessage(invalidErrors.join(' '));
+      }
     } finally {
       setIsUploading(false);
+      setUploadProgressText('Uploading...');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -85,25 +124,24 @@ export function UploadDropzone({ onUploadSuccess, disabled = false }: UploadDrop
     if (disabled || isUploading) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      validateAndUpload(file);
+      validateAndUploadFiles(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      validateAndUpload(file);
+      validateAndUploadFiles(Array.from(e.target.files));
     }
   };
 
   return (
     <div className="w-full flex flex-col gap-3">
-      {/* Hidden File Input */}
+      {/* Hidden File Input with Multiple Selection Support */}
       <input
         ref={fileInputRef}
         type="file"
         accept=".pdf,application/pdf"
+        multiple
         className="hidden"
         onChange={handleFileChange}
         disabled={disabled || isUploading}
@@ -136,10 +174,10 @@ export function UploadDropzone({ onUploadSuccess, disabled = false }: UploadDrop
 
           <div className="flex flex-col gap-0.5">
             <p className="text-xs font-medium text-slate-200">
-              {isUploading ? 'Uploading...' : 'Drop PDF or browse'}
+              {isUploading ? uploadProgressText : 'Drop PDF(s) or browse'}
             </p>
             <p className="text-[10px] text-slate-500 font-mono">
-              PDF • Max {MAX_FILE_SIZE_MB}MB
+              PDF • Multi-file support • Max {MAX_FILE_SIZE_MB}MB each
             </p>
           </div>
         </div>

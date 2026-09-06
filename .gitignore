@@ -63,9 +63,10 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
-# md files except for readme and docs
+# md and other files except for readme and docs
 *.md
 !README.md
 !docs/*.md
+uploads/
 
 .agentignore

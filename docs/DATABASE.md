@@ -192,3 +192,57 @@ alembic history --verbose
 ## 6. Host Port Configuration Note
 
 In local development, the Docker PostgreSQL container maps port **`5433`** to the internal container port **`5432`** (`5433:5432`). This intentional design prevents port collisions with native Windows PostgreSQL services running on port `5432`. Application configuration in `app/core/config.py` automatically routes requests targeting `localhost:5432` to port `5433`.
+
+---
+
+## 7. Vector Schema Evolution: Migrating to 1024-D for `intfloat/e5-large`
+
+When transitioning from cloud `gemini-embedding-001` (768-D) to the self-hosted local model `intfloat/e5-large` (1024-D), the database schema evolves via an Alembic migration:
+
+### 7.1 Schema Modification
+```sql
+-- 1. Alter vector dimension
+ALTER TABLE document_chunks 
+ALTER COLUMN embedding TYPE vector(1024);
+
+-- 2. Drop existing index and rebuild with new dimensions
+DROP INDEX IF EXISTS ix_document_chunks_embedding;
+
+CREATE INDEX ix_document_chunks_embedding 
+ON document_chunks 
+USING hnsw (embedding vector_cosine_ops);
+```
+
+### 7.2 Alembic Migration Implementation
+```python
+def upgrade() -> None:
+    op.alter_column(
+        "document_chunks",
+        "embedding",
+        type_=Vector(1024),
+        existing_type=Vector(768),
+    )
+    op.execute("DROP INDEX IF EXISTS ix_document_chunks_embedding;")
+    op.execute(
+        "CREATE INDEX ix_document_chunks_embedding ON document_chunks "
+        "USING hnsw (embedding vector_cosine_ops);"
+    )
+
+def downgrade() -> None:
+    op.alter_column(
+        "document_chunks",
+        "embedding",
+        type_=Vector(768),
+        existing_type=Vector(1024),
+    )
+    op.execute("DROP INDEX IF EXISTS ix_document_chunks_embedding;")
+    op.execute(
+        "CREATE INDEX ix_document_chunks_embedding ON document_chunks "
+        "USING hnsw (embedding vector_cosine_ops);"
+    )
+```
+
+### 7.3 Operational Considerations
+* **Index Size:** Vector dimensions increase by 33.3% (from 768 to 1024 floats per chunk). In PostgreSQL `pgvector`, 100,000 chunks require ~410MB for raw vectors and ~550MB for the HNSW graph index, remaining well within standard database memory bounds.
+* **Re-embedding Requirement:** Because vectors from different embedding spaces are non-comparable, existing documents must be re-embedded when switching the underlying model.
+

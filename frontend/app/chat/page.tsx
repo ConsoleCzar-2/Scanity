@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { getCurrentUser, logout, UserProfile } from '@/lib/auth';
@@ -17,10 +17,25 @@ import type {
   DocumentResponse,
 } from '@/types/api';
 
+function subscribeAuth(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', callback);
+  return () => window.removeEventListener('storage', callback);
+}
+
+function getClientUser(): UserProfile | null {
+  return getCurrentUser();
+}
+
+function getServerUser(): UserProfile | null {
+  return null;
+}
+
 export default function ChatWorkspacePage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getCurrentUser());
-  const [isAuthChecking] = useState<boolean>(() => !getCurrentUser());
+  const authUser = useSyncExternalStore(subscribeAuth, getClientUser, getServerUser);
+  const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
+  const currentUser = profileUser || authUser;
 
   // Parameter state (tuned by Admin via SidebarDrawer)
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
@@ -40,9 +55,9 @@ export default function ChatWorkspacePage() {
   const [documentsLoading, setDocumentsLoading] = useState<boolean>(false);
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
 
-  // Verify authentication on mount
+  // Verify authentication once mounted on client
   useEffect(() => {
-    if (!getCurrentUser()) {
+    if (typeof window !== 'undefined' && !getCurrentUser()) {
       router.push('/login');
     }
   }, [router]);
@@ -72,9 +87,9 @@ export default function ChatWorkspacePage() {
 
   // Initial mount: load health and document catalog
   useEffect(() => {
-    if (isAuthChecking) return;
+    if (!currentUser) return;
 
-    let isMounted = true;
+    let isSubscribed = true;
 
     async function loadInitialData() {
       try {
@@ -83,7 +98,7 @@ export default function ChatWorkspacePage() {
           api.listDocuments(0, 100),
         ]);
 
-        if (isMounted) {
+        if (isSubscribed) {
           if (healthData.status === 'fulfilled') {
             setHealth(healthData.value);
           } else {
@@ -96,7 +111,7 @@ export default function ChatWorkspacePage() {
           setDocumentsLoading(false);
         }
       } catch {
-        if (isMounted) {
+        if (isSubscribed) {
           setDocumentsLoading(false);
         }
       }
@@ -107,10 +122,10 @@ export default function ChatWorkspacePage() {
     // Re-check health every 30s
     const healthInterval = setInterval(fetchHealth, 30000);
     return () => {
-      isMounted = false;
+      isSubscribed = false;
       clearInterval(healthInterval);
     };
-  }, [fetchHealth, isAuthChecking]);
+  }, [fetchHealth, currentUser]);
 
   // Document handlers
   const handleUploadSuccess = (newDoc: DocumentResponse) => {
@@ -172,7 +187,7 @@ export default function ChatWorkspacePage() {
     setTopK(newTopK);
   };
 
-  if (isAuthChecking) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#090b0e] flex items-center justify-center text-slate-400 font-mono text-xs">
         Verifying authorization...
@@ -207,7 +222,7 @@ export default function ChatWorkspacePage() {
       <ProfileModal
         isOpen={profileOpen}
         onClose={() => setProfileOpen(false)}
-        onProfileUpdated={(u) => setCurrentUser(u)}
+        onProfileUpdated={(u) => setProfileUser(u)}
       />
 
       {/* Extreme Left-to-Right Header Bar with Home Link */}

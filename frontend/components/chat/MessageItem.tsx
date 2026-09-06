@@ -1,7 +1,8 @@
+
 'use client';
 
 import React from 'react';
-import { User, Sparkles, ShieldCheck } from 'lucide-react';
+import { User, Sparkles, ShieldCheck, Loader2 } from 'lucide-react';
 import { CitationChip } from '@/components/chat/CitationChip';
 import { FallbackCard } from '@/components/chat/FallbackCard';
 import { formatScore, formatTimestamp } from '@/lib/utils';
@@ -16,6 +17,8 @@ export interface ChatMessage {
   confidence?: number;
   citations?: CitationResponse[];
   isStreaming?: boolean;
+  isThinking?: boolean;
+  thinkingStep?: string;
 }
 
 interface MessageItemProps {
@@ -76,8 +79,13 @@ export function MessageItem({ message, onCitationClick }: MessageItemProps) {
             )}
           </div>
 
-          {/* Main Content: Fallback Card vs Grounded Answer Text */}
-          {isFallback ? (
+          {/* Main Content: Thinking Stepper vs Fallback vs Grounded Answer */}
+          {message.isThinking ? (
+            <div className="flex items-center gap-2.5 py-2.5 text-xs text-indigo-300 font-mono">
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+              <span className="tracking-wide">{message.thinkingStep || 'Processing query...'}</span>
+            </div>
+          ) : isFallback ? (
             <FallbackCard answer={message.text} />
           ) : (
             <div className="text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-wrap select-text">
