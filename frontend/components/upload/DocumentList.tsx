@@ -177,12 +177,9 @@ export function DocumentList({
 
       {/* Empty State */}
       {documents.length === 0 && !isLoading && (
-        <div className="text-center py-8 px-4 border border-slate-800/80 rounded-lg bg-slate-900/30">
-          <FileText className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-          <p className="text-xs text-slate-300 font-medium mb-1">No documents indexed</p>
-          <p className="text-[11px] text-slate-500">
-            Upload a PDF using the dropzone above to begin indexing with pgvector.
-          </p>
+        <div className="text-center py-6 px-4 border border-[#1c232f] rounded bg-[#161c26]">
+          <FileText className="w-6 h-6 mx-auto mb-1.5 text-slate-500" />
+          <p className="text-xs text-slate-400">No documents uploaded yet</p>
         </div>
       )}
 
@@ -196,10 +193,10 @@ export function DocumentList({
           return (
             <div
               key={doc.id}
-              className={`p-3 rounded-lg border transition-all ${
+              className={`p-2.5 rounded border transition-colors ${
                 isSelected
-                  ? 'bg-slate-900/90 border-indigo-500/50'
-                  : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'
+                  ? 'bg-[#1a2130] border-indigo-500/60'
+                  : 'bg-[#161c26] border-[#1c232f] hover:border-[#2a3547]'
               }`}
             >
               <div className="flex items-start justify-between gap-2.5">

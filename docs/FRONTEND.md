@@ -25,11 +25,18 @@ frontend/
 |   |-- favicon.ico             # Application favicon
 |   |-- globals.css             # Tailwind v4 theme variables, enterprise panels, keyframe animations
 |   |-- layout.tsx              # Root layout with font imports, metadata, and dark theme
-|   |-- page.tsx                # Main single-page dashboard (Live backend probe & 2-column layout)
+|   |-- page.tsx                # Public Landing Page with scroll-driven hero fade and photo card rise
+|   |-- login/
+|   |   |-- page.tsx            # Authentication Page (Sign In & Customer Registration, Demo logins)
+|   |-- chat/
+|   |   |-- page.tsx            # Authenticated Workspace Page (Document Catalog & Grounded Q&A)
 |-- components/                 # Modular UI components (Completed in Step 9)
+|   |-- landing/
+|   |   |-- LandingPage.tsx     # Solacc-inspired minimal public landing page with technical ledger
 |   |-- layout/
-|   |   |-- Header.tsx          # Application header with status indicator, drawer toggle, and user menu
-|   |   |-- SidebarDrawer.tsx   # Slide-out navigation drawer with conversation history and actions
+|   |   |-- Header.tsx          # Edge-to-edge header with extreme-anchored hamburger, user avatar, and link to /
+|   |   |-- SidebarDrawer.tsx   # Navigation drawer with chat history, RBAC parameter controls, and telemetry
+|   |   |-- ProfileModal.tsx    # User profile identity management dialog (Name, Email, Role badge)
 |   |-- upload/
 |   |   |-- UploadDropzone.tsx  # Drag-and-drop PDF upload component with file validation
 |   |   |-- DocumentList.tsx    # List of uploaded documents with adaptive polling and selection
@@ -42,16 +49,17 @@ frontend/
 |   |   |-- QueryInput.tsx      # Prompt input bar with send button and loading spinner
 |   |   |-- FallbackCard.tsx    # Anti-hallucination warning card for ungrounded queries
 |   |-- admin/
-|   |   |-- AdminLogsModal.tsx  # System telemetry and audit logs dashboard dialog
+|   |   |-- AdminLogsModal.tsx  # Multi-service interactive health probing & dynamic root telemetry dialog
 |-- lib/
 |   |-- api.ts                  # Strongly typed API client & polling logic
+|   |-- auth.ts                 # Authentication, customer registration, session management, and RBAC
 |   |-- constants.ts            # API base URLs, upload limits, polling intervals
 |   |-- utils.ts                # Formatting helpers (bytes to MB, dates, confidence percentages)
 |-- types/
 |   |-- api.ts                  # TypeScript interfaces matching FastAPI Pydantic models
 |-- .env.example                # Safe frontend environment template
 |-- .env.local                  # Local development environment configuration
-|-- next.config.ts              # Next.js config with backend API proxy rewrites
+|-- next.config.ts              # Next.js config with backend API proxy rewrites and root .env loading
 |-- postcss.config.mjs          # PostCSS configuration
 |-- tsconfig.json               # TypeScript compiler configuration
 |-- package.json                # Project dependencies and run scripts

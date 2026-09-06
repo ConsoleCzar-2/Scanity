@@ -119,27 +119,27 @@ export function UploadDropzone({ onUploadSuccess, disabled = false }: UploadDrop
             fileInputRef.current.click();
           }
         }}
-        className={`border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer select-none ${
+        className={`border border-dashed rounded p-4 text-center transition-colors cursor-pointer select-none ${
           isDragging
-            ? 'border-indigo-500 bg-indigo-950/20'
-            : 'border-slate-800 hover:border-slate-700 bg-slate-900/40'
+            ? 'border-indigo-500 bg-[#1a2130]'
+            : 'border-[#1c232f] hover:border-[#2a3547] bg-[#161c26]'
         } ${disabled || isUploading ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
-        <div className="flex flex-col items-center justify-center gap-2">
-          <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
+        <div className="flex flex-col items-center justify-center gap-1.5">
+          <div className="w-8 h-8 rounded bg-[#11151c] border border-[#222b3a] flex items-center justify-center text-slate-300">
             {isUploading ? (
-              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" />
+              <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
             ) : (
-              <UploadCloud className="w-5 h-5 text-slate-300" />
+              <UploadCloud className="w-4 h-4 text-slate-300" />
             )}
           </div>
 
           <div className="flex flex-col gap-0.5">
-            <p className="text-sm font-medium text-slate-200">
-              {isUploading ? 'Uploading PDF Document...' : 'Drag and drop PDF here, or click to browse'}
+            <p className="text-xs font-medium text-slate-200">
+              {isUploading ? 'Uploading...' : 'Drop PDF or browse'}
             </p>
-            <p className="text-xs text-slate-500">
-              Supports multi-page documents up to {MAX_FILE_SIZE_MB}MB
+            <p className="text-[10px] text-slate-500 font-mono">
+              PDF • Max {MAX_FILE_SIZE_MB}MB
             </p>
           </div>
         </div>

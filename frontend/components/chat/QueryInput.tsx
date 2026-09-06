@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Filter } from 'lucide-react';
-import { DEFAULT_THRESHOLD } from '@/lib/constants';
+
 
 interface QueryInputProps {
   onSubmit: (question: string) => void;
@@ -42,14 +42,14 @@ export function QueryInput({
 
   const placeholderText =
     selectedDocCount > 0
-      ? `Ask a question scoped to ${selectedDocCount} selected document(s)...`
+      ? `Ask about ${selectedDocCount} selected document(s)...`
       : totalDocCount > 0
-      ? 'Ask a question across all documents in knowledge base...'
-      : 'Upload a document on the left to start asking questions...';
+      ? 'Ask a question about your documents...'
+      : 'Upload a PDF on the left to start...';
 
   return (
-    <form onSubmit={handleSubmit} className="w-full flex flex-col gap-2 pt-3 border-t border-slate-800">
-      <div className="relative flex items-center bg-[#090d16] border border-slate-700/80 rounded-lg focus-within:border-indigo-500 transition-colors shadow-sm">
+    <form onSubmit={handleSubmit} className="w-full flex flex-col gap-2 pt-3 border-t border-[#1c232f]">
+      <div className="relative flex items-center bg-[#161c26] border border-[#222b3a] rounded focus-within:border-indigo-500 transition-colors">
         <textarea
           ref={inputRef}
           rows={1}
@@ -58,42 +58,35 @@ export function QueryInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholderText}
           disabled={isLoading || totalDocCount === 0}
-          className="w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 pl-3.5 pr-12 py-3 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed max-h-32"
+          className="w-full bg-transparent text-xs text-slate-100 placeholder:text-slate-500 pl-3 pr-10 py-2.5 resize-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed max-h-32"
         />
 
         <button
           type="submit"
           disabled={!prompt.trim() || isLoading || totalDocCount === 0}
-          className="absolute right-2.5 p-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 disabled:hover:bg-indigo-600 transition-all cursor-pointer disabled:cursor-not-allowed shadow-sm"
+          className="absolute right-2 p-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-30 transition-colors cursor-pointer disabled:cursor-not-allowed"
           title="Send query (Enter)"
         >
           {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin text-white" />
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
           ) : (
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
           )}
         </button>
       </div>
 
-      {/* Scope & Guardrail Indicators Bar */}
-      <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 font-mono">
+      {/* Scope Indicator */}
+      <div className="flex items-center justify-between text-[10px] text-slate-500 px-0.5 font-mono">
         <div className="flex items-center gap-1.5">
-          <Filter className="w-3 h-3 text-slate-400" />
-          <span>
-            {selectedDocCount > 0 ? (
-              <span className="text-indigo-400 font-medium">
-                Scope: {selectedDocCount} Selected
-              </span>
-            ) : (
-              <span>Scope: All Indexed Documents</span>
-            )}
-          </span>
+          <Filter className="w-3 h-3 text-slate-500" />
+          {selectedDocCount > 0 ? (
+            <span className="text-indigo-400">Scoped to {selectedDocCount} file(s)</span>
+          ) : (
+            <span>Scope: All indexed files</span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <span>Threshold: {DEFAULT_THRESHOLD.toFixed(2)}</span>
-          <span className="hidden sm:inline">• Enter to send</span>
-        </div>
+        <span>Enter ↵</span>
       </div>
     </form>
   );
