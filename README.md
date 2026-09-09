@@ -4,6 +4,18 @@ Scanity is an asynchronous, decoupled, enterprise-grade Retrieval-Augmented Gene
 
 Scanity allows organizations to ingest complex, multi-page PDF documents and query them in natural language, delivering factual answers strictly grounded in document text with page-level citations and anti-hallucination guardrails.
 
+**Note:** The following is the [Github repo link](https://github.com/ConsoleCzar-2/Scanity).
+
+---
+
+## User Interface
+
+### Landing Page
+![Scanity Landing Page](images/landing.png)
+
+### Document Upload and Chat Interface
+![Scanity Chat Interface](images/chat.png)
+
 ---
 
 ## 1. Key Architectural Highlights
