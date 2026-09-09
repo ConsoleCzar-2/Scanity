@@ -1,8 +1,13 @@
 import logging
+from typing import List, Optional
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db
+from app.models.document import Document, DocumentChunk
 from app.models.query import Query, QueryCitation, QueryDocument
 from app.schemas.query import (
     CitationResponse,
@@ -174,4 +179,99 @@ async def search_chunks(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred during vector retrieval: {str(err)}",
         )
+
+
+@router.get(
+    "/history",
+    response_model=List[QueryResponse],
+    summary="Fetch Session Query History",
+    description="Returns chronological query conversation history for a given session ID or recent queries.",
+)
+async def get_query_history(
+    session_id: Optional[uuid.UUID] = None,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+) -> List[QueryResponse]:
+    try:
+        stmt = (
+            select(Query)
+            .options(
+                selectinload(Query.citations)
+                .selectinload(QueryCitation.chunk)
+                .selectinload(DocumentChunk.document)
+            )
+            .order_by(Query.created_at.asc())
+        )
+        if session_id:
+            stmt = stmt.where(Query.session_id == session_id)
+        stmt = stmt.limit(limit)
+
+        result = await db.execute(stmt)
+        queries = result.scalars().all()
+
+        responses: List[QueryResponse] = []
+        for q in queries:
+            cits: List[CitationResponse] = []
+            for c in q.citations:
+                if c.chunk:
+                    doc_name = (
+                        c.chunk.document.original_filename
+                        if c.chunk.document
+                        else "document.pdf"
+                    )
+                    snippet = c.chunk.content.strip()[:250] + (
+                        "..." if len(c.chunk.content.strip()) > 250 else ""
+                    )
+                    cits.append(
+                        CitationResponse(
+                            chunk_id=c.chunk_id,
+                            document_id=c.chunk.document_id,
+                            original_filename=doc_name,
+                            page_number=c.chunk.page_number,
+                            snippet=snippet,
+                            relevance_score=c.relevance_score or 0.0,
+                        )
+                    )
+            responses.append(
+                QueryResponse(
+                    query_id=q.id,
+                    question=q.question_text,
+                    answer=q.answer_text or "",
+                    confidence=q.confidence_score or 0.0,
+                    is_grounded=q.is_grounded,
+                    citations=cits,
+                    created_at=q.created_at.isoformat() if q.created_at else None,
+                )
+            )
+        return responses
+    except Exception as err:
+        logger.error(f"Failed to fetch query history: {err}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch query history: {str(err)}",
+        )
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    summary="Delete Session Conversation",
+    description="Deletes all queries and associated citations for a given session ID.",
+)
+async def delete_session(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    try:
+        stmt = delete(Query).where(Query.session_id == session_id)
+        await db.execute(stmt)
+        await db.commit()
+        return {"status": "ok", "message": f"Session {session_id} deleted successfully."}
+    except Exception as err:
+        await db.rollback()
+        logger.error(f"Failed to delete session {session_id}: {err}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete session: {str(err)}",
+        )
+
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   Plus,
   MessageSquare,
@@ -14,16 +14,17 @@ import {
 } from 'lucide-react';
 import { APP_NAME, APP_VERSION, DEFAULT_THRESHOLD, DEFAULT_TOP_K } from '@/lib/constants';
 import { UserProfile } from '@/lib/auth';
+import type { ChatSession } from '@/lib/chatStorage';
 
-export interface ChatSession {
-  id: string;
-  title: string;
-  createdAt: string;
-}
+export type { ChatSession };
 
 interface SidebarDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  sessions: ChatSession[];
+  activeSessionId?: string;
+  onSelectSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
   onNewChat: () => void;
   onOpenAdminLogs: () => void;
   user: UserProfile | null;
@@ -35,6 +36,10 @@ interface SidebarDrawerProps {
 export function SidebarDrawer({
   isOpen,
   onClose,
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
   onNewChat,
   onOpenAdminLogs,
   user,
@@ -43,35 +48,6 @@ export function SidebarDrawer({
   onUpdateParameters,
 }: SidebarDrawerProps) {
   const isAdmin = user?.role === 'admin';
-
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('scanity_chat_sessions');
-        if (saved) return JSON.parse(saved);
-      } catch {
-        // Ignore storage error
-      }
-    }
-    return [
-      {
-        id: 'session-1',
-        title: 'Initial Document Ingestion & Verification',
-        createdAt: new Date().toISOString(),
-      },
-    ];
-  });
-
-  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = sessions.filter((s) => s.id !== sessionId);
-    setSessions(updated);
-    try {
-      localStorage.setItem('scanity_chat_sessions', JSON.stringify(updated));
-    } catch {
-      // Ignore storage error
-    }
-  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -140,28 +116,52 @@ export function SidebarDrawer({
             Recent Conversations
           </span>
 
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              onClick={() => {
-                onClose();
-              }}
-              className="flex items-center justify-between gap-2 px-2.5 py-2 rounded hover:bg-[#161c26] text-slate-300 hover:text-white cursor-pointer group transition-colors text-xs border border-transparent hover:border-[#222b3a]"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <MessageSquare className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400 shrink-0" />
-                <span className="truncate">{session.title}</span>
-              </div>
-
-              <button
-                onClick={(e) => handleDeleteSession(session.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 transition-opacity p-0.5"
-                title="Delete session"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+          {sessions.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-slate-500 italic">
+              No saved conversations yet.
             </div>
-          ))}
+          ) : (
+            sessions.map((session) => {
+              const isActive = session.id === activeSessionId;
+              return (
+                <div
+                  key={session.id}
+                  onClick={() => {
+                    onSelectSession(session.id);
+                    onClose();
+                  }}
+                  className={`flex items-center justify-between gap-2 px-2.5 py-2 rounded cursor-pointer group transition-colors text-xs border ${
+                    isActive
+                      ? 'bg-[#161c26] text-white border-indigo-500/50 font-medium'
+                      : 'hover:bg-[#161c26] text-slate-300 hover:text-white border-transparent hover:border-[#222b3a]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MessageSquare
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isActive
+                          ? 'text-indigo-400'
+                          : 'text-slate-400 group-hover:text-indigo-400'
+                      }`}
+                    />
+                    <span className="truncate">{session.title}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteSession(session.id);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 transition-opacity p-0.5 cursor-pointer"
+                    title="Delete session"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Drawer Footer */}

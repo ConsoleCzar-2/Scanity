@@ -11,13 +11,13 @@ Scanity enables users to upload PDF documents and ask natural-language questions
 | Guide | Description |
 |---|---|
 | [System Architecture](ARCHITECTURE.md) | Decoupled tiers, modular backend structure, RAG design, and key architectural trade-offs. |
-| [Ingestion & Workers](INGESTION_AND_WORKERS.md) | PDF extraction with PyMuPDF, recursive token chunking with sliding overlap, and Celery worker architecture. |
-| [Database & Schema](DATABASE.md) | PostgreSQL + pgvector setup, UUIDv7 time-ordered keys, ERD, tables catalog, and Alembic migrations. |
-| [API Reference](API.md) | REST endpoints, request/response schemas, CORS rules, and health probe documentation. |
-| [Frontend Architecture](FRONTEND.md) | Next.js 15 App Router specifications, component hierarchy, polling state machine, and citation chip UI. |
+| [Ingestion & Workers](INGESTION_AND_WORKERS.md) | PDF extraction with PyMuPDF, recursive token chunking with sliding overlap, L2 vector normalization, and Celery worker architecture. |
+| [Database & Schema](DATABASE.md) | PostgreSQL + pgvector setup, UUIDv7 time-ordered keys, ERD, tables catalog, session query tracking, and Alembic migrations. |
+| [API Reference](API.md) | REST endpoints, query history APIs, request/response schemas, CORS rules, and health probe documentation. |
+| [Frontend Architecture](FRONTEND.md) | Next.js 15 App Router specifications, component hierarchy, session storage, polling state machine, and citation chip UI. |
 | [Deployment & Operations](DEPLOYMENT.md) | Multi-container Docker topology, port allocations, persistent volumes, environment configs, and health probes. |
-| [Testing Strategy](TESTING.md) | Ingestion unit tests, synthetic multi-page PDF generation, database cascade tests, and verification scripts. |
-| [UML & Sequence Diagrams](UML.md) | Comprehensive class diagrams, ingestion sequence, and query validation workflows. |
+| [Testing Strategy & Results](TESTING.md) | Ingestion unit tests, synthetic multi-page PDF generation, database cascade tests, full execution logs, and frontend verification. |
+| [UML & Sequence Diagrams](UML.md) | Comprehensive class diagrams, ingestion sequence, query validation, and session management workflows. |
 
 ---
 
@@ -26,7 +26,7 @@ Scanity enables users to upload PDF documents and ask natural-language questions
 ### 1. Prerequisites
 - Docker & Docker Compose
 - Python 3.12+
-- Node.js 18+ (for frontend in Step 8)
+- Node.js 18+ (for frontend)
 
 ### 2. Infrastructure Setup
 Start PostgreSQL with `pgvector` and Redis:
@@ -112,15 +112,3 @@ Interactive API docs are available at:
 
 ---
 
-## Implementation Roadmap
-
-- [x] **Step 1: Infrastructure Setup (Docker Compose)** — Postgres + pgvector, Redis, and pgAdmin.
-- [x] **Step 2: Backend Initialization & Environment Setup** — Python 3.12 virtual environment, FastAPI scaffolding, and CORS.
-- [x] **Step 3: Database Models & Migrations** — Enterprise modular backend, UUIDv7 primary keys, pgvector `Vector(768)` with HNSW index, and Alembic migrations.
-- [x] **Step 4: Core Ingestion Pipeline** — PyMuPDF extraction, ~700-token chunking with 100-token overlap, and Gemini `gemini-embedding-001` integration.
-- [x] **Step 5: Celery Worker Integration** — Decoupled async processing queue via Redis, cloud-ready storage abstraction, and upload status tracking.
-- [x] **Step 6: Retrieval System** — Cosine similarity search (`<=>`), top-k retrieval, and relevance threshold gating.
-- [x] **Step 7: Generation System** — Grounded structured output with Gemini 3.5 Flash Lite, post-hoc citation validation, and anti-hallucination guards.
-- [x] **Step 8: Frontend Initialization** — Next.js 15 App Router, TypeScript 5, Tailwind CSS v4, typed API client, and enterprise dark dashboard shell.
-- [x] **Step 9: Frontend UI Components & Interactive Experience** — Drag-and-drop upload panel, adaptive polling badges, navigation drawer, system telemetry modal, and grounded chat interface with progressive streaming and verified citation popovers.
-- [ ] **Step 10: Final Polish & Production Readiness** — Containerized deployment and documentation.

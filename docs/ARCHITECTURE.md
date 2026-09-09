@@ -31,7 +31,7 @@ flowchart TB
         Postgres[(PostgreSQL 16 + pgvector<br/>Port: 5433 -> 5432)]
         DocTable[Documents Table]
         ChunkTable[Document Chunks + HNSW Vector 768]
-        QueryTable[Queries & Citations]
+        QueryTable[Queries & Citations + Session ID]
     end
 
     subgraph ExternalServices [External Foundation Models]
@@ -53,15 +53,15 @@ flowchart TB
     CeleryWorker --> PyMuPDF
     PyMuPDF --> Chunker
     Chunker -->|Batch Text Chunks| GeminiEmbed
-    GeminiEmbed -->|768-dim Vectors| CeleryWorker
+    GeminiEmbed -->|768-dim Normalized Vectors| CeleryWorker
     CeleryWorker -->|Insert Chunks + Vectors| Postgres
     CeleryWorker -->|Update status=ready| Postgres
 
-    QueryAPI -->|1. Embed Question| GeminiEmbed
-    QueryAPI -->|2. Cosine Distance <=> Top-5| Postgres
+    QueryAPI -->|1. Embed Question + L2 Norm| GeminiEmbed
+    QueryAPI -->|2. Cosine Distance <=> Top-k| Postgres
     QueryAPI -->|3. Grounded Prompt + Chunks| GeminiLLM
     GeminiLLM -->|Structured JSON Response| QueryAPI
-    QueryAPI -->|Record Query & Citations| Postgres
+    QueryAPI -->|Record Query, Citations, session_id| Postgres
 ```
 
 ---
@@ -93,7 +93,7 @@ backend/
     ├── schemas/                  # Pydantic validation schemas
     │   ├── __init__.py
     │   ├── document.py           # Ingestion, status, and upload schemas
-    │   └── query.py              # RetrievedChunk, RetrievalResult, QuerySearchRequest
+    │   └── query.py              # RetrievedChunk, RetrievalResult, QuerySearchRequest, History
     ├── api/                      # REST API routing
     │   ├── __init__.py
     │   ├── deps.py               # Shared endpoint dependencies (get_db)
@@ -104,10 +104,10 @@ backend/
     │           ├── __init__.py
     │           ├── health.py     # Live DB probe endpoint
     │           ├── documents.py  # PDF upload, status polling, list, and delete
-    │           └── query.py      # Vector search inspection endpoint
+    │           └── query.py      # Q&A, search, query history, and session deletion
     ├── services/                 # Pure domain business logic
     │   ├── __init__.py
-    │   ├── ingestion.py          # PDFParser, RecursiveTokenChunker, GeminiEmbeddingService
+    │   ├── ingestion.py          # PDFParser, RecursiveTokenChunker, GeminiEmbeddingService (L2 Norm)
     │   ├── storage.py            # BaseStorageService, LocalStorageService, GCSStorageService
     │   ├── retrieval.py          # KNN vector similarity search & relevance threshold gate
     │   └── generation.py         # Grounded LLM synthesis & post-hoc citation integrity validator
@@ -123,12 +123,12 @@ backend/
 
 ### 3.1 Celery + Redis vs. FastAPI BackgroundTasks
 * **Decision:** Celery with Redis as the message broker.
-* **Rationale:** FastAPI's built-in `BackgroundTasks` runs inside the same Python process as the web server. For lightweight tasks (like sending a verification email), this is acceptable. However, PDF parsing with PyMuPDF, chunking text, and waiting on external embedding API calls is CPU and network intensive. Running this in the web server process degrades concurrency and risks catastrophic task loss if the server restarts. Celery provides persistent message queues, worker auto-scaling, automatic task retries with exponential backoff, and distributed execution.
+* **Rationale:** FastAPI's built-in `BackgroundTasks` runs inside the same Python process as the web server. For lightweight tasks (like sending an email), this is acceptable. However, PDF parsing with PyMuPDF, chunking text, and waiting on external embedding API calls is CPU and network intensive. Running this in the web server process degrades concurrency and risks task loss if the server restarts. Celery provides persistent message queues, worker auto-scaling, automatic task retries with exponential backoff, and distributed execution.
 
 ### 3.2 PostgreSQL + `pgvector` vs. Dedicated Vector Database (e.g., Pinecone/Qdrant)
 * **Decision:** PostgreSQL 16 with the native `pgvector` extension.
 * **Rationale:**
-  1. **Transactional Integrity (ACID):** Deleting a document atomically deletes all its chunks and vector embeddings via PostgreSQL's `ON DELETE CASCADE`. In a multi-database architecture (e.g., Postgres + Pinecone), network timeouts or partial failures create "ghost embeddings" in the vector store that cite deleted documents.
+  1. **Transactional Integrity (ACID):** Deleting a document atomically deletes all its chunks and vector embeddings via PostgreSQL's `ON DELETE CASCADE`. In a multi-database architecture, network timeouts or partial failures create "ghost embeddings" in the vector store that cite deleted documents.
   2. **Joint Relational & Vector Filtering:** Queries scoped to specific document IDs (`WHERE document_id IN (...)`) allow PostgreSQL's query optimizer to evaluate relational filters alongside the HNSW vector index in a single execution plan.
   3. **Operational Simplicity:** Unified backups (`pg_dump`), point-in-time recovery, user auth, and vector similarity in one single container with zero additional operational overhead.
 
@@ -136,15 +136,9 @@ backend/
 * **Decision:** Standardize all table primary keys on UUIDv7 (RFC 9562).
 * **Rationale:** Standard UUIDv4 values are completely random, scattering row inserts unpredictably across disk pages. In tables with thousands of document chunks, this causes massive **B-tree index fragmentation** and frequent page splits. UUIDv7 prefixes a 48-bit millisecond Unix timestamp to cryptographically random bytes, guaranteeing that records are **monotonically increasing**. This combines the sequential insertion speed of auto-incrementing integers (`BIGSERIAL`) with the security and uniqueness of UUIDs.
 
-### 3.4 Cloud Embeddings (`gemini-embedding-001`) vs. Local Embeddings (`intfloat/e5-large`)
-* **Current Implementation:** Cloud Google GenAI `gemini-embedding-001` projecting into 768-dimensional vector space.
-* **Production Roadmap Alternative:** Self-hosted local `intfloat/e5-large` (1024-dimensional normalized dense vectors via `sentence-transformers`).
-* **Trade-Off Analysis:**
-  1. **Rate Limits & Ingestion Bottlenecks:** Cloud API free and pay-as-you-go tiers enforce strict request quotas (e.g. 15-80 RPM, 30K TPM). When processing dense multi-page PDFs, batch calls can trigger HTTP 429 quota exhaustion, requiring exponential backoff and pacing delays. A local E5 model processes chunks continuously at hardware line speed with zero external quotas.
-  2. **Latency & Throughput:** Cloud APIs incur ~800ms-1200ms of HTTPS WAN round-trip latency per batch. In-process local inference takes ~15-40ms per batch on modern GPU/CPU hardware.
-  3. **Enterprise Privacy & Air-Gapped Operation:** In semiconductor design (Cadence context), defense, or finance, sensitive hardware designs and internal manuals cannot leave the local network boundary. Running `intfloat/e5-large` locally ensures 100% data sovereignty.
-  4. **Cost:** Local execution eliminates per-token API fees entirely.
-  5. **Schema Transition:** Switching to E5-large requires an Alembic migration altering `document_chunks.embedding` from `vector(768)` to `vector(1024)` and prefixing queries with `"query: "` and chunks with `"passage: "`.
+### 3.4 Euclidean L2 Normalization in Embedding Space
+* **Decision:** Apply Euclidean L2 normalization (`v / ||v||_2`) to all embedding vectors before database storage and vector comparison.
+* **Rationale:** By ensuring all stored vectors have unit length ($\|v\|_2 = 1.0$), cosine similarity search maps monotonically to dot product and squared Euclidean distance. This ensures optimal index partitioning within pgvector's HNSW graph and mathematical determinism across unit test assertions.
 
 ---
 
@@ -156,17 +150,17 @@ backend/
 1. **Upload & Staging:** PDF received via `POST /api/v1/documents/upload` (supporting multi-file batch uploads). Stored on disk (`/uploads`) and recorded in `documents` with status `pending`.
 2. **Asynchronous Dispatch:** An ingestion task is enqueued to Redis via `process_pdf_task.delay(document_id, file_path)`.
 3. **Extraction & Chunking:** PyMuPDF extracts text per page. The text is chunked to ~700 tokens with 100-token overlap, preserving `page_number` and `chunk_index`.
-4. **Vector Embedding & Quota Resilience:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors. The ingestion pipeline includes automatic exponential backoff (parsing Google's `retryDelay` headers on HTTP 429) and a 1.0s throttle between batches to ensure robust processing. Status updates to `ready` upon completion.
+4. **Vector Embedding & Quota Resilience:** Chunks are sent in batches to Google Gemini (`gemini-embedding-001`), producing 768-dimensional vectors with L2 normalization. The ingestion pipeline includes automatic exponential backoff (parsing Google's `retryDelay` headers on HTTP 429) and a 1.0s throttle between batches to ensure robust processing. Status updates to `ready` upon completion.
 5. **Persistence & Indexing:** Chunks and embeddings are stored in `document_chunks`. The HNSW index enables sub-10ms nearest-neighbor retrieval. Status updates to `ready`.
 
 ### 4.2 Query, Guardrail & Generation Pipeline
-*(Retrieval, Relevance Gate, Grounded Generation & Citation Validation Implemented & Verified in Steps 6 and 7)*
 
-1. **Question Embedding:** User question is embedded into a 768-dimensional vector using `GeminiEmbeddingService` (`gemini-embedding-001`).
+1. **Question Embedding:** User question is embedded into a 768-dimensional vector using `GeminiEmbeddingService` (`gemini-embedding-001`) with L2 normalization.
 2. **Vector Similarity Search (KNN):** PostgreSQL executes a cosine distance query (`<=>`) joining `document_chunks` and `documents` (filtered by `status = 'ready'`), returning the nearest $k$ chunks ordered by distance.
 3. **Multi-Document Scoping:** The query dynamically appends `WHERE document_id IN (...)` if specific document IDs are specified by the caller.
 4. **Distance-to-Similarity Conversion:** The cosine distance $d$ is mapped to similarity $s = \max(0.0, \min(1.0, 1.0 - d))$.
 5. **Relevance Threshold Gate:** If the maximum cosine similarity among retrieved chunks is below `RELEVANCE_THRESHOLD` (default: 0.70), the pipeline flags `meets_threshold = False`, suppresses candidate chunks, saves an ungrounded audit record in `queries`, and immediately returns `"Not found in the provided document(s)."` without invoking the LLM.
-6. **Constrained Generation:** When the relevance gate passes, retrieved chunks and question are forwarded to `Gemini 3.5 Flash Lite` with temperature 0.0 and a strict JSON schema (`GroundedAnswerSchema`).
+6. **Constrained Generation:** When the relevance gate passes, retrieved chunks and question are forwarded to `Gemini 3.5 Flash Lite` with temperature 0.0, disabled automatic function calling, and a strict JSON schema (`GroundedAnswerSchema`).
 7. **Post-Hoc Citation Validation:** The citation validator verifies that every cited `chunk_id` mathematically exists within the candidate set retrieved from PostgreSQL. Unverified or fabricated chunk IDs are stripped. If no valid citations remain, the answer is suppressed and falls back to `"Not found in the provided document(s)."`.
-8. **Audit Persistence:** The query, groundedness flag, confidence score, document references, and verified citations (with rank and relevance score) are committed atomically to PostgreSQL tables `queries`, `query_documents`, and `query_citations`.
+8. **Audit Persistence:** The query, `session_id`, groundedness flag, confidence score, document references, and verified citations (with rank and relevance score) are committed atomically to PostgreSQL tables `queries`, `query_documents`, and `query_citations`.
+9. **Dual-Layer Conversation History:** Queries are instantly cached on the client via `localStorage` for zero-latency UI re-rendering, and query history can be queried or purged at any time via `GET /api/v1/query/history?session_id=...` and `DELETE /api/v1/query/sessions/{session_id}`.

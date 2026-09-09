@@ -63,6 +63,8 @@ flowchart LR
   * The ingestion thread sleeps for the exact duration requested before retrying (up to 4 attempts).
   * A 1.0s inter-batch throttle is enforced between batch requests to stay comfortably within rate quotas during bulk multi-page document ingestion.
   * When `use_mock=False`, silent mock degradation is strictly disabled, ensuring 100% genuine neural embeddings are written to the database.
+* **Euclidean L2 Normalization:**
+  Both genuine API embeddings and mock vectors are strictly normalized with $\|v\|_2 = 1.0$ (`vec / np.linalg.norm(vec)`), guaranteeing mathematical consistency across cosine similarity distance operators (`<=>`) in pgvector.
 * **Deterministic Mock Fallback:**
   If `GEMINI_API_KEY` is not provided or set to a placeholder, the service generates deterministic, Euclidean unit-normalized 768-dimensional float vectors derived from the SHA-256 hash of the chunk content:
   $$\|v\|_2 = \sqrt{\sum v_i^2} \approx 1.0$$
@@ -116,8 +118,6 @@ print(f"Generated {result.total_chunks} embedded chunks.")
 ---
 
 ## 4. Background Workers (Celery + Redis Architecture)
-
-*(Fully Implemented & Verified in Step 5)*
 
 Scanity processes high-volume PDF parsing and vector embeddings asynchronously via Celery and Redis to prevent blocking the FastAPI web server.
 

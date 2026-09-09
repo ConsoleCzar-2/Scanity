@@ -119,4 +119,24 @@ export const api = {
       body: JSON.stringify(req),
     });
   },
+
+  /**
+   * Retrieves chronological query history for a given session.
+   */
+  async getQueryHistory(sessionId?: string): Promise<QueryResponse[]> {
+    const url = sessionId
+      ? `${API_BASE_URL}/query/history?session_id=${encodeURIComponent(sessionId)}`
+      : `${API_BASE_URL}/query/history`;
+    return request<QueryResponse[]>(url);
+  },
+
+  /**
+   * Deletes all queries for a given session from the backend database.
+   */
+  async deleteSession(sessionId: string): Promise<{ status: string; message: string }> {
+    return request<{ status: string; message: string }>(`${API_BASE_URL}/query/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  },
 };
+

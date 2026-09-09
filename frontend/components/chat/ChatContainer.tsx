@@ -11,25 +11,86 @@ import { DEFAULT_TOP_K, DEFAULT_THRESHOLD } from '@/lib/constants';
 import { MessageItem, type ChatMessage } from '@/components/chat/MessageItem';
 import { QueryInput } from '@/components/chat/QueryInput';
 import { CitationModal } from '@/components/chat/CitationModal';
+import {
+  getStoredMessages,
+  saveStoredMessages,
+  generateSessionTitle,
+} from '@/lib/chatStorage';
 import type { CitationResponse } from '@/types/api';
 
 interface ChatContainerProps {
+  sessionId: string;
   selectedDocIds: Set<string>;
   totalDocCount: number;
   threshold?: number;
   topK?: number;
+  onSessionTitleUpdate?: (sessionId: string, newTitle: string) => void;
 }
 
 export function ChatContainer({
+  sessionId,
   selectedDocIds,
   totalDocCount,
   threshold = DEFAULT_THRESHOLD,
   topK = DEFAULT_TOP_K,
+  onSessionTitleUpdate,
 }: ChatContainerProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    return getStoredMessages(sessionId);
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationResponse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync state whenever active sessionId changes
+  useEffect(() => {
+    if (!sessionId) return;
+    const stored = getStoredMessages(sessionId);
+    if (stored.length > 0) {
+      // Already initialized in useState
+      return;
+    }
+
+    // If local storage is empty, check backend database for existing queries in this session
+    let active = true;
+    api
+      .getQueryHistory(sessionId)
+      .then((history) => {
+        if (!active || !history || history.length === 0) {
+          setMessages([]);
+          return;
+        }
+        const reconstructed: ChatMessage[] = [];
+        history.forEach((q) => {
+          reconstructed.push({
+            id: `user-${q.query_id}`,
+            sender: 'user',
+            text: q.question,
+            timestamp: q.created_at || new Date().toISOString(),
+          });
+          reconstructed.push({
+            id: `asst-${q.query_id}`,
+            sender: 'assistant',
+            text: q.answer,
+            timestamp: q.created_at || new Date().toISOString(),
+            isGrounded: q.is_grounded,
+            confidence: q.confidence,
+            citations: q.citations || [],
+            isStreaming: false,
+          });
+        });
+        setMessages(reconstructed);
+        saveStoredMessages(sessionId, reconstructed);
+      })
+      .catch(() => {
+        // Fallback to empty message thread
+        if (active) setMessages([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -39,7 +100,22 @@ export function ChatContainer({
     scrollToBottom();
   }, [messages]);
 
+  // Save messages whenever they transition to a settled, non-streaming state
+  useEffect(() => {
+    if (!sessionId || isLoading) return;
+    const settled = messages.filter((m) => !m.isThinking && !m.isStreaming);
+    if (settled.length > 0) {
+      saveStoredMessages(sessionId, settled);
+    }
+  }, [messages, sessionId, isLoading]);
+
   const handleAskQuestion = async (questionText: string) => {
+    // If opening prompt of the session, auto-title the session
+    if (messages.length === 0) {
+      const newTitle = generateSessionTitle(questionText);
+      onSessionTitleUpdate?.(sessionId, newTitle);
+    }
+
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `asst-${Date.now()}`;
 
@@ -89,12 +165,13 @@ export function ChatContainer({
       const scopedDocIds =
         selectedDocIds.size > 0 ? Array.from(selectedDocIds) : undefined;
 
-      // Invoke backend /api/v1/query with active parameters
+      // Invoke backend /api/v1/query with active parameters and session_id
       const queryResponse = await api.askQuestion({
         question: questionText,
         document_ids: scopedDocIds,
         top_k: topK,
         threshold: threshold,
+        session_id: sessionId,
       });
 
       clearTimeout(stepTimer1);
@@ -204,6 +281,9 @@ export function ChatContainer({
   const handleClearChat = () => {
     if (confirm('Clear the current conversation thread?')) {
       setMessages([]);
+      if (sessionId) {
+        saveStoredMessages(sessionId, []);
+      }
     }
   };
 

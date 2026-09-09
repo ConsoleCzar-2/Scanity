@@ -284,13 +284,71 @@ Answers natural language questions strictly grounded in uploaded documents. Retr
 
 #### Curl Command:
 ```powershell
-curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70}'
+curl -X POST "http://localhost:8000/api/v1/query" -H "Content-Type: application/json" -d '{\"question\": \"What was the operating profit margin?\", \"top_k\": 3, \"threshold\": 0.70, \"session_id\": \"01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27\"}'
 ```
 
 ---
 
-## 4. Scaffolded Endpoints (Planned for Future Steps)
+### 3.8 Query Session History
+Retrieves chronological query records for a specific conversation session, including questions, grounded answers, confidence ratings, and verified citation snippets.
 
-### 4.1 Session-Scoped Multi-Turn History (Step 8 / Extension)
-* `GET /api/v1/query/history?session_id={uuid}`: Fetches chronological conversational history.
+* **Method:** `GET`
+* **Path:** `/api/v1/query/history`
+* **Tags:** `Query`
+* **Authentication:** None
+* **Query Parameter:** `session_id: str` (UUID string identifying the conversation thread)
+
+#### Response (200 OK):
+```json
+[
+  {
+    "query_id": "01a0755a-f6d6-7e92-8d91-9e90d59125e8",
+    "question": "What was the reported operating margin for Q3?",
+    "answer": "The operating margin reported for Q3 was 18.4%, driven by strong recurring enterprise licensing.",
+    "confidence": 0.92,
+    "is_grounded": true,
+    "citations": [
+      {
+        "chunk_id": "01a0755a-f69a-74e9-8940-88bc19625c68",
+        "document_id": "01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27",
+        "original_filename": "annual_review_2026.pdf",
+        "page_number": 1,
+        "snippet": "In Q3 2026, Scanity achieved an operating profit margin of 18.4 percent...",
+        "relevance_score": 0.7624
+      }
+    ],
+    "created_at": "2026-09-06T06:14:50.850123Z"
+  }
+]
+```
+
+#### Curl Command:
+```powershell
+curl "http://localhost:8000/api/v1/query/history?session_id=01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27"
+```
+
+---
+
+### 3.9 Delete Query Session
+Purges all query records, answers, and associated query citations for a specific conversation session from PostgreSQL.
+
+* **Method:** `DELETE`
+* **Path:** `/api/v1/query/sessions/{session_id}`
+* **Tags:** `Query`
+* **Authentication:** None
+* **Path Parameter:** `session_id: str` (UUID string identifying the conversation thread)
+
+#### Response (200 OK):
+```json
+{
+  "status": "ok",
+  "deleted_count": 3,
+  "message": "Deleted 3 queries for session '01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27'."
+}
+```
+
+#### Curl Command:
+```powershell
+curl -X DELETE "http://localhost:8000/api/v1/query/sessions/01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27"
+```
 

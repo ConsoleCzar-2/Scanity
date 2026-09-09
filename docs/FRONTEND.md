@@ -1,6 +1,6 @@
 # Frontend Architecture & Design Specification
 
-> Note: **Step 8 (Frontend Initialization)** and **Step 9 (Frontend UI Components & Interactive Experience)** are fully completed. The Next.js 15 App Router architecture, TypeScript schemas, typed API client, formatting utilities, enterprise dark theme dashboard shell, and all interactive components are fully operational.
+The Scanity frontend is fully completed and operational, implementing Next.js 15 App Router architecture, TypeScript schemas, typed API client, enterprise dark theme dashboard, multi-file upload dropzone, Skiper-style card stacking scroll, and dual-layer conversation history persistence.
 
 ## 1. Overview & Technology Stack
 
@@ -25,24 +25,24 @@ frontend/
 |   |-- favicon.ico             # Application favicon
 |   |-- globals.css             # Tailwind v4 theme variables, enterprise panels, keyframe animations
 |   |-- layout.tsx              # Root layout with font imports, metadata, and dark theme
-|   |-- page.tsx                # Public Landing Page with scroll-driven hero fade and photo card rise
+|   |-- page.tsx                # Public Landing Page with Skiper card-stacking scroll dynamics
 |   |-- login/
 |   |   |-- page.tsx            # Authentication Page (Sign In & Customer Registration, Demo logins)
 |   |-- chat/
-|   |   |-- page.tsx            # Authenticated Workspace Page (Document Catalog & Grounded Q&A)
-|-- components/                 # Modular UI components (Completed in Step 9)
+|   |   |-- page.tsx            # Authenticated Workspace Page (Document Catalog, Session State, & Q&A)
+|-- components/                 # Modular UI components
 |   |-- landing/
-|   |   |-- LandingPage.tsx     # Solacc-inspired minimal public landing page with technical ledger
+|   |   |-- LandingPage.tsx     # Landing page with capability ledger & card stacking scroll
 |   |-- layout/
-|   |   |-- Header.tsx          # Edge-to-edge header with extreme-anchored hamburger, user avatar, and link to /
-|   |   |-- SidebarDrawer.tsx   # Navigation drawer with chat history, RBAC parameter controls, and telemetry
+|   |   |-- Header.tsx          # Edge-to-edge header with hamburger, user avatar, and home link
+|   |-- SidebarDrawer.tsx       # Dynamic conversation sessions list, active highlighting, and admin sliders
 |   |   |-- ProfileModal.tsx    # User profile identity management dialog (Name, Email, Role badge)
 |   |-- upload/
-|   |   |-- UploadDropzone.tsx  # Drag-and-drop PDF upload component with file validation
+|   |   |-- UploadDropzone.tsx  # Drag-and-drop PDF upload component with multi-file validation
 |   |   |-- DocumentList.tsx    # List of uploaded documents with adaptive polling and selection
 |   |   |-- StatusBadge.tsx     # Color-coded badge (Pending, Processing, Ready, Failed)
 |   |-- chat/
-|   |   |-- ChatContainer.tsx   # Message thread container with auto-scroll and progressive streaming
+|   |   |-- ChatContainer.tsx   # Session-aware message thread with progressive streaming and citations
 |   |   |-- MessageItem.tsx     # User prompt and assistant grounded answer cards
 |   |   |-- CitationChip.tsx    # Interactive citation badge (Page number, relevance score)
 |   |   |-- CitationModal.tsx   # Popover displaying cited chunk text snippet and metadata
@@ -53,6 +53,7 @@ frontend/
 |-- lib/
 |   |-- api.ts                  # Strongly typed API client & polling logic
 |   |-- auth.ts                 # Authentication, customer registration, session management, and RBAC
+|   |-- chatStorage.ts          # LocalStorage session manager, message serialization, and auto-titling
 |   |-- constants.ts            # API base URLs, upload limits, polling intervals
 |   |-- utils.ts                # Formatting helpers (bytes to MB, dates, confidence percentages)
 |-- types/
@@ -175,6 +176,21 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
 * **Hero Section Transition:**
   * The hero headline smoothly scales backward and fades in opacity as the architecture cards rise into the foreground.
 
+### 4.8 Conversation History & Multi-Session Architecture (`lib/chatStorage.ts`)
+* **Typed Session Store (`ChatSession`):**
+  * Tracks `id`, `title`, `createdAt`, and `updatedAt` for each conversation thread.
+* **Dynamic Prompt Auto-Titling (`generateSessionTitle`):**
+  * On submitting the first query in a thread, automatically derives a clean, human-readable session title (up to 42 characters) and refreshes the sidebar drawer title in real time.
+* **Zero-Latency Client Persistence:**
+  * Full message threads (user prompts, grounded answers, confidence meters, verified citations) serialize to `localStorage` under `scanity_chat_messages_{sessionId}`.
+  * Instantaneous (0ms) loading when navigating back to historical conversations.
+* **Keyed Component Remounting:**
+  * `ChatContainer` mounts with `key={activeSessionId}`, ensuring clean lifecycle state transitions and zero cross-session data leaks when switching conversations.
+* **Session Lifecycle Operations:**
+  * Create new session: generates UUIDv7-style ID, saves to list, and sets active.
+  * Delete session: purges client storage and triggers asynchronous database cleanup (`DELETE /api/v1/query/sessions/{session_id}`).
+  * Clear chat: resets current thread messages without destroying the session container.
+
 ---
 
 ## 5. API Client Layer (`lib/api.ts` and `types/api.ts`)
@@ -213,6 +229,12 @@ deleteDocument(documentId: string): Promise<{ success: boolean; message: string 
 
 // Submit natural-language question with optional document scope and similarity threshold
 askQuestion(request: QueryRequest): Promise<QueryResponse>;
+
+// Retrieve session query history
+getQueryHistory(sessionId: string): Promise<QueryResponse[]>;
+
+// Delete query history for a session from database
+deleteSession(sessionId: string): Promise<{ status: string; deleted_count: number; message: string }>;
 ```
 
 ---

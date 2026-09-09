@@ -29,7 +29,7 @@ def create_synthetic_pdf() -> bytes:
         (50, 72),
         "Scanity Technical Whitepaper - Page 1\n\n"
         "1. Executive Summary\n"
-        "Scanity is an enterprise AI-powered Document Question Answering architecture designed "
+        "Scanity is an AI-powered Document Question Answering architecture designed "
         "to eliminate hallucinations through verifiable, page-level citation guardrails. "
         "By enforcing strict retrieval thresholds and structuring responses with citations, "
         "the system guarantees that generated answers are grounded solely in verified source passages.\n\n"

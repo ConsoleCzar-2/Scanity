@@ -12,6 +12,15 @@ import { UploadDropzone } from '@/components/upload/UploadDropzone';
 import { DocumentList } from '@/components/upload/DocumentList';
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { APP_NAME, DEFAULT_THRESHOLD, DEFAULT_TOP_K } from '@/lib/constants';
+import {
+  getStoredSessions,
+  getActiveSessionId,
+  setActiveSessionId,
+  createNewSession,
+  deleteStoredSession,
+  saveSession,
+  type ChatSession,
+} from '@/lib/chatStorage';
 import type {
   HealthResponse,
   DocumentResponse,
@@ -45,7 +54,11 @@ export default function ChatWorkspacePage() {
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [adminLogsOpen, setAdminLogsOpen] = useState<boolean>(false);
   const [profileOpen, setProfileOpen] = useState<boolean>(false);
-  const [chatResetKey, setChatResetKey] = useState<number>(0);
+
+  // Conversation Session State
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionIdState] = useState<string>('');
+  const [isStorageLoaded, setIsStorageLoaded] = useState<boolean>(false);
 
   // Backend Health State
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -173,8 +186,71 @@ export default function ChatWorkspacePage() {
     setSelectedDocIds(new Set());
   };
 
+  // Initialize sessions from localStorage once on client
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = setTimeout(() => {
+      const stored = getStoredSessions();
+      if (stored.length > 0) {
+        setSessions(stored);
+        const savedActive = getActiveSessionId();
+        if (savedActive && stored.some((s) => s.id === savedActive)) {
+          setActiveSessionIdState(savedActive);
+        } else {
+          setActiveSessionIdState(stored[0].id);
+          setActiveSessionId(stored[0].id);
+        }
+      } else {
+        const initial = createNewSession('Initial Conversation');
+        setSessions([initial]);
+        setActiveSessionIdState(initial.id);
+      }
+      setIsStorageLoaded(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleSelectSession = (id: string) => {
+    setActiveSessionIdState(id);
+    setActiveSessionId(id);
+  };
+
   const handleNewChat = () => {
-    setChatResetKey((k) => k + 1);
+    const newSession = createNewSession('New Conversation');
+    setSessions((prev) => [newSession, ...prev.filter((s) => s.id !== newSession.id)]);
+    setActiveSessionIdState(newSession.id);
+  };
+
+  const handleDeleteSession = (id: string) => {
+    deleteStoredSession(id);
+    api.deleteSession(id).catch(() => {});
+
+    setSessions((prev) => {
+      const remaining = prev.filter((s) => s.id !== id);
+      if (remaining.length === 0) {
+        const fresh = createNewSession('New Conversation');
+        setActiveSessionIdState(fresh.id);
+        return [fresh];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionIdState(remaining[0].id);
+        setActiveSessionId(remaining[0].id);
+      }
+      return remaining;
+    });
+  };
+
+  const handleSessionTitleUpdate = (sessId: string, newTitle: string) => {
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id === sessId) {
+          const updated = { ...s, title: newTitle, updatedAt: new Date().toISOString() };
+          saveSession(updated);
+          return updated;
+        }
+        return s;
+      })
+    );
   };
 
   const handleSignOut = () => {
@@ -201,6 +277,10 @@ export default function ChatWorkspacePage() {
       <SidebarDrawer
         isOpen={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
         onNewChat={handleNewChat}
         onOpenAdminLogs={() => setAdminLogsOpen(true)}
         user={currentUser}
@@ -272,13 +352,21 @@ export default function ChatWorkspacePage() {
           {/* Right Column: Grounded Q&A Assistant (8 cols on desktop) */}
           <div className="lg:col-span-8 xl:col-span-8 flex flex-col gap-4">
             <div className="enterprise-panel p-3.5">
-              <ChatContainer
-                key={chatResetKey}
-                selectedDocIds={selectedDocIds}
-                totalDocCount={documents.length}
-                threshold={threshold}
-                topK={topK}
-              />
+              {isStorageLoaded && activeSessionId ? (
+                <ChatContainer
+                  key={activeSessionId}
+                  sessionId={activeSessionId}
+                  selectedDocIds={selectedDocIds}
+                  totalDocCount={documents.length}
+                  threshold={threshold}
+                  topK={topK}
+                  onSessionTitleUpdate={handleSessionTitleUpdate}
+                />
+              ) : (
+                <div className="min-h-[580px] flex items-center justify-center text-slate-500 font-mono text-xs">
+                  Initializing conversation session...
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -275,7 +275,7 @@ class GeminiEmbeddingService:
 
         embeddings: List[List[float]] = []
 
-        # Batch texts to respect Gemini API request limits
+        # Batch texts to avoid Gemini API request limits
         for i in range(0, len(texts), self.batch_size):
             batch = list(texts[i : i + self.batch_size])
             max_retries = 4
@@ -291,7 +291,11 @@ class GeminiEmbeddingService:
                     )
                     if hasattr(response, "embeddings") and response.embeddings:
                         for emb in response.embeddings:
-                            embeddings.append(emb.values)
+                            vec = list(emb.values)
+                            norm = math.sqrt(sum(x * x for x in vec))
+                            if norm > 0:
+                                vec = [x / norm for x in vec]
+                            embeddings.append(vec)
                         success = True
                         break
                     else:

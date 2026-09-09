@@ -1,6 +1,6 @@
 # Deployment & Infrastructure Guide
 
-> Note: Infrastructure services (PostgreSQL 16 with pgvector and Redis 7) are live from Step 1. Full multi-service container orchestration (including production containerization of backend, worker, and frontend) is scheduled for **Step 10 (Final Polish & Production Readiness)**. This document will be continuously updated with live deployment configurations as each step progresses.
+Scanity is deployed across a decoupled multi-service container architecture. Core state services (PostgreSQL 16 with pgvector and Redis 7) run via Docker Compose, while application runtimes (FastAPI backend, Celery worker cluster, and Next.js 15 frontend) operate with environment configuration and health monitoring.
 
 ## 1. System Topology & Container Architecture
 
@@ -167,7 +167,7 @@ volumes:
    ```
    *(Note: The `-P solo` flag is required when running Celery natively on Windows).*
 
-5. **Start Next.js Development Server (Step 8+):**
+5. **Start Next.js Frontend Server:**
    ```powershell
    cd frontend
    npm run dev

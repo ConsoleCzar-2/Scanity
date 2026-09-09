@@ -214,7 +214,52 @@ sequenceDiagram
         GeminiLLM-->>API: JSON: {answer, citations: [{chunk_id, page}], confidence}
         
         API->>API: Post-Hoc Citation Validator (verify cited chunk_ids were retrieved)
-        API->>DB: INSERT into queries & query_citations (UUIDv7)
+        API->>DB: INSERT into queries & query_citations (UUIDv7, session_id)
         API-->>User: 200 OK {answer, citations, confidence, is_grounded: true}
     end
+```
+
+---
+
+### 3.3 Session Lifecycle & Conversation History Flow
+Illustrates client-side dual-layer storage synchronization, prompt-based auto-titling, and backend audit retrieval and deletion.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Client (Browser)
+    participant Storage as localStorage (Browser Cache)
+    participant UI as Next.js React UI (ChatContainer)
+    participant Drawer as SidebarDrawer
+    participant API as FastAPI (Web Tier)
+    participant DB as PostgreSQL (queries & citations)
+
+    Note over User, UI: Session Creation & Auto-Titling
+    User->>Drawer: Click "+ New Conversation"
+    Drawer->>Storage: createNewSession() -> save session metadata
+    Drawer->>UI: Switch activeSessionId
+    User->>UI: Submit initial question ("What is bit stuffing?")
+    UI->>Storage: generateSessionTitle("What is bit stuffing?")
+    Storage->>Drawer: Update session title in sidebar
+    UI->>API: POST /api/v1/query {question, session_id}
+    API->>DB: Save query record with session_id
+    API-->>UI: Grounded answer + citations
+    UI->>Storage: saveStoredMessages(session_id, messages)
+
+    Note over User, DB: Multi-Session Navigation & Deletion
+    User->>Drawer: Select historical session
+    Drawer->>UI: Switch activeSessionId
+    UI->>Storage: getStoredMessages(session_id) (0ms instant render)
+    alt If localStorage is empty
+        UI->>API: GET /api/v1/query/history?session_id=UUID
+        API->>DB: SELECT * FROM queries WHERE session_id = UUID
+        DB-->>API: Historical queries + citations
+        API-->>UI: Reconstructed message thread
+    end
+
+    User->>Drawer: Click Delete Session (Trash icon)
+    Drawer->>Storage: deleteStoredSession(session_id)
+    Drawer->>API: DELETE /api/v1/query/sessions/{session_id}
+    API->>DB: DELETE FROM queries WHERE session_id = UUID (CASCADE)
+    API-->>Drawer: 200 OK {status: "ok", deleted_count: N}
 ```
