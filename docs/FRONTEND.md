@@ -42,19 +42,20 @@ frontend/
 |   |   |-- DocumentList.tsx    # List of uploaded documents with adaptive polling and selection
 |   |   |-- StatusBadge.tsx     # Color-coded badge (Pending, Processing, Ready, Failed)
 |   |-- chat/
-|   |   |-- ChatContainer.tsx   # Session-aware message thread with progressive streaming and citations
-|   |   |-- MessageItem.tsx     # User prompt and assistant grounded answer cards
+|   |   |-- ChatContainer.tsx   # Session-aware message thread with real-time SSE streaming and citations
+|   |   |-- MessageItem.tsx     # User prompt and assistant cards with inline [1] citation badges
 |   |   |-- CitationChip.tsx    # Interactive citation badge (Page number, relevance score)
-|   |   |-- CitationModal.tsx   # Popover displaying cited chunk text snippet and metadata
+|   |   |-- CitationModal.tsx   # Verbatim PDF chunk excerpt popover & rendered PDF page view with zoom
 |   |   |-- QueryInput.tsx      # Prompt input bar with send button and loading spinner
 |   |   |-- FallbackCard.tsx    # Anti-hallucination warning card for ungrounded queries
 |   |-- admin/
 |   |   |-- AdminLogsModal.tsx  # Multi-service interactive health probing & dynamic root telemetry dialog
 |-- lib/
-|   |-- api.ts                  # Strongly typed API client & polling logic
+|   |-- api.ts                  # Strongly typed API client & streaming fetch methods
 |   |-- auth.ts                 # Authentication, customer registration, session management, and RBAC
 |   |-- chatStorage.ts          # LocalStorage session manager, message serialization, and auto-titling
 |   |-- constants.ts            # API base URLs, upload limits, polling intervals
+|   |-- sse.ts                  # Zero-dependency SSE stream parser & callback dispatcher
 |   |-- utils.ts                # Formatting helpers (bytes to MB, dates, confidence percentages)
 |-- types/
 |   |-- api.ts                  # TypeScript interfaces matching FastAPI Pydantic models
@@ -128,31 +129,34 @@ The user interface follows a two-column desktop layout that collapses to a tabbe
   * `failed` (Rose Red): Processing encountered an unrecoverable format or parsing error (hover for error detail).
 
 ### 4.3 `ChatContainer`, `MessageItem`, & `QueryInput`
-* **Progressive Pipeline Stepper Feedback:**
-  * To prevent silent wait periods during backend pipeline execution (~4.5s round trip), an assistant card renders immediately with a rotating loader and progressive phase descriptions:
-    * **0.0s:** *"Generating query embedding vector..."*
-    * **1.2s:** *"Scanning pgvector cosine index across document chunks..."*
-    * **2.4s:** *"Synthesizing verified grounded response with Gemini 3.5 Flash Lite..."*
-* **Typewriter Pacing:**
-  * Once the response payload is received from the backend, a smooth token-by-token typewriter pacing (40ms per token) renders the prose before snapping verified citation tags into view.
+* **Real-Time SSE Streaming Pipeline:**
+  * Connects to `POST /api/v1/query/stream` via `consumeSSEStream` (`lib/sse.ts`) using the browser's `ReadableStreamDefaultReader`.
+  * Emits live pipeline status steps directly from backend events:
+    * *"Generating query embedding vector..."* (`step: embedding`)
+    * *"Scanning pgvector cosine index across document chunks..."* (`step: retrieving`)
+    * *"Synthesizing verified grounded response with Gemini 3.5 Flash Lite..."* (`step: generating`)
+    * *"Extracting and validating source citations..."* (`step: validating_citations`)
+  * Streamed token deltas (`event: token`) render incrementally on the screen with sub-500ms time-to-first-token perceived latency.
+* **Inline Numbered Citation Badges:**
+  * `MessageItem.tsx` parses answer text dynamically, converting raw chunk UUIDs or bracketed numbers into sleek, Wikipedia-style numbered superscript pills (`[1]`, `[2]`).
+  * Styled with zero borders or line decorations to prevent collapsed-border visual artifacts.
+  * Fully interactive: clicking any badge directly opens `CitationModal` focused on that specific cited excerpt.
 * **Message Structure:**
-  * Displays user prompt aligned to right in dark slate bubble (`bg-slate-900 border-slate-800`).
-  * Displays assistant answer card in high-contrast panel (`bg-slate-900/90 border-slate-800`).
-  * Accompanied by confidence rating meter (e.g., `94% Groundedness`).
-  * Renders list of interactive `CitationChip` elements with source page numbers.
+  * Displays user prompt aligned to right in dark slate bubble (`bg-indigo-600 text-white` or dark slate).
+  * Displays assistant answer card in high-contrast panel (`bg-[#0f172a] border-slate-800`).
+  * Accompanied by confidence rating meter (e.g., `Verified Grounded • 94%`).
+  * Renders list of interactive `CitationChip` elements with source page numbers and relevance scores.
 * **Keyboard Navigation:**
   * `Enter` submits query, while `Shift+Enter` inserts newlines.
   * Dynamic scoping indicator tag shows whether querying all documents or isolated scoped files.
 
-### 4.4 `CitationChip` & `CitationModal`
-* **Visual Representation:** High-contrast pill badge displaying `Page {n} | {relevance}%`.
-* **Interactivity:**
-  * Hovering or clicking the chip opens an accessible modal popover displaying:
-    * Source document filename.
-    * Exact source page number.
-    * Verbatim chunk snippet extracted from the PDF.
-    * Cosine similarity relevance score.
-    * Unique chunk UUID for enterprise auditing.
+### 4.4 `CitationChip` & `CitationModal` (Visual Citation Inspector)
+* **CitationChip:** High-contrast pill badge displaying `[1] Page {n} • {relevance}%`.
+* **Dual-Tab CitationModal:**
+  * Clicking any inline badge or footer citation chip opens a modal with a tab switcher:
+    * **"Verbatim Text" Tab:** Displays the original document filename, exact page number, cosine similarity score, and verbatim passage snippet extracted from the PDF with a one-click copy button.
+    * **"PDF Page View" Tab:** Displays the actual rendered PDF page image (150 DPI PNG rasterized on-demand via PyMuPDF at `GET /api/v1/documents/{id}/pages/{page}/image`).
+    * **Zoom & Pan Controls:** Features Zoom In (+), Zoom Out (-), Reset (100%), and Open Image in New Tab buttons for examining surrounding schematics, formulas, and diagrams.
 
 ### 4.5 `FallbackCard` (Anti-Hallucination Guardrail)
 * When the backend returns `is_grounded: false` or the relevance threshold ($0.70$) is not met:
@@ -229,6 +233,12 @@ deleteDocument(documentId: string): Promise<{ success: boolean; message: string 
 
 // Submit natural-language question with optional document scope and similarity threshold
 askQuestion(request: QueryRequest): Promise<QueryResponse>;
+
+// Stream natural-language answer tokens and pipeline events via Server-Sent Events (SSE)
+askQuestionStream(request: QueryRequest, signal?: AbortSignal): Promise<Response>;
+
+// Resolve rendered 150 DPI PNG page image URL for visual citation inspection
+getDocumentPageImageUrl(documentId: string, pageNumber: number, dpi?: number): string;
 
 // Retrieve session query history
 getQueryHistory(sessionId: string): Promise<QueryResponse[]>;

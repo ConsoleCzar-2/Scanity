@@ -18,7 +18,7 @@ Scanity enforces strict quality engineering principles to ensure mathematical de
 
 ## 2. Comprehensive Test Suite Catalog
 
-The test suite encompasses 24 discrete verification phases partitioned across 4 specialized test modules:
+The test suite encompasses 30 discrete verification phases partitioned across 6 specialized test modules:
 
 ### 2.1 Ingestion Pipeline Tests (`backend/tests/test_ingestion.py`)
 
@@ -64,6 +64,22 @@ The test suite encompasses 24 discrete verification phases partitioned across 4 
 | `[6/7] Audit Database Persistence` | PostgreSQL `queries` & `query_citations` | Confirms query text, answer, confidence, groundedness flag, and citations are stored in DB. |
 | `[7/7] Document Cascade Deletion` | `DELETE /api/v1/documents/{id}` | Confirms deleting source document cascades to chunks and query citations cleanly. |
 
+### 2.5 Real-Time Token Streaming Tests (`backend/tests/test_streaming.py`)
+
+| Test Phase | Target Component | Verification Criteria |
+|---|---|---|
+| `[1/3] SSE Wire Format` | `format_sse()` | Verifies standard SSE wire format serialization (`event: <type>\ndata: <json>\n\n`). |
+| `[2/3] Streaming Happy Path` | `POST /api/v1/query/stream` | Verifies full event sequence (`status: embedding` -> `retrieving` -> `generating` -> `token` deltas -> `validating_citations` -> `citations` -> `done`). |
+| `[3/3] Gate Rejection Stream` | Anti-hallucination filter | Verifies low-similarity query triggers `gate_rejected` event with deterministic fallback without LLM tokens. |
+
+### 2.6 PDF Page Rasterization Tests (`backend/tests/test_page_rendering.py`)
+
+| Test Phase | Target Component | Verification Criteria |
+|---|---|---|
+| `[1/3] PyMuPDF Page Rasterization` | `PDFParser.render_page_image()` | Verifies generation of valid PNG bytes matching PNG magic header (`\x89PNG\r\n\x1a\n`) with configurable DPI. |
+| `[2/3] Page Boundary Validation` | Page bounds check | Verifies `ValueError` when requesting page 0 or page exceeding total page count. |
+| `[3/3] Page Image Endpoint` | `GET /documents/{id}/pages/{page}/image` | Verifies HTTP 200 OK response with `image/png` MIME and immutable cache headers. |
+
 ---
 
 ## 3. How to Execute Tests
@@ -89,6 +105,8 @@ cd backend
 .\venv\Scripts\python.exe tests/test_worker_and_endpoints.py
 .\venv\Scripts\python.exe tests/test_retrieval.py
 .\venv\Scripts\python.exe tests/test_generation.py
+.\venv\Scripts\python.exe tests/test_streaming.py
+.\venv\Scripts\python.exe tests/test_page_rendering.py
 ```
 
 ### 3.4 Run Frontend Linting & Build Verification

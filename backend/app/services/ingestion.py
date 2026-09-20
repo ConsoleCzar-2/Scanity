@@ -32,6 +32,8 @@ class PDFParser:
             return ""
         # Normalize CRLF to LF
         text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+        # Strip Private Use Area (PUA) bullet/icon codes (e.g., \ue000-\uf8ff)
+        text = re.sub(r"[\ue000-\uf8ff]", "", text)
         # Replace multiple spaces/tabs with single space
         text = re.sub(r"[ \t]+", " ", text)
         # Collapse more than two consecutive newlines into two
@@ -69,6 +71,46 @@ class PDFParser:
 
         logger.info(f"Extracted {len(parsed_pages)} non-empty pages from PDF.")
         return parsed_pages
+
+    @staticmethod
+    def render_page_image(
+        file_input: Union[str, Path, bytes],
+        page_number: int,
+        dpi: int = 150,
+    ) -> bytes:
+        """
+        Renders a specific page of a PDF document as a PNG image byte buffer.
+
+        Args:
+            file_input: Filepath, Path, or raw bytes of the PDF.
+            page_number: 1-indexed page number to render.
+            dpi: Dots per inch resolution for rasterization (default: 150 DPI).
+
+        Returns:
+            bytes: PNG image data.
+
+        Raises:
+            IndexError: If page_number is out of bounds (1 <= page_number <= total_pages).
+            ValueError: If file_input is invalid or unreadable.
+        """
+        if isinstance(file_input, bytes):
+            doc = pymupdf.open(stream=file_input, filetype="pdf")
+        else:
+            doc = pymupdf.open(str(file_input))
+
+        try:
+            total_pages = doc.page_count
+            if page_number < 1 or page_number > total_pages:
+                raise IndexError(
+                    f"Requested page {page_number} is out of bounds (document has {total_pages} pages)."
+                )
+
+            page = doc.load_page(page_number - 1)
+            pixmap = page.get_pixmap(dpi=dpi)
+            return pixmap.tobytes("png")
+        finally:
+            doc.close()
+
 
 
 class RecursiveTokenChunker:

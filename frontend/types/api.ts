@@ -90,3 +90,36 @@ export interface RetrievalResult {
   total_retrieved: number;
   chunks: RetrievedChunk[];
 }
+
+export interface SSEStatusPayload {
+  step: 'embedding' | 'retrieving' | 'generating' | 'validating_citations' | string;
+  message?: string;
+}
+
+export interface SSETokenPayload {
+  delta: string;
+}
+
+export interface SSECitationsPayload {
+  citations: CitationResponse[];
+  confidence: number;
+  is_grounded: boolean;
+}
+
+export interface SSEGateRejectedPayload {
+  top_similarity: number;
+  threshold: number;
+  fallback_answer: string;
+}
+
+export interface SSEDonePayload {
+  query_id: string;
+  is_grounded?: boolean;
+  confidence?: number;
+  created_at?: string;
+}
+
+export interface SSEErrorPayload {
+  message: string;
+}
+

@@ -112,3 +112,18 @@ class GroundedAnswerSchema(BaseModel):
         description="Confidence score from 0.0 to 1.0 indicating degree of support from excerpts"
     )
 
+
+class CitationsExtractionSchema(BaseModel):
+    """Pydantic schema passed to Gemini API for extracting structured citations from an answer."""
+    citations: List[RawCitation] = Field(
+        default_factory=list,
+        description="List of cited chunk_id and page_number tuples supporting claims in the generated answer"
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score from 0.0 to 1.0 indicating degree of support from excerpts"
+    )
+
+

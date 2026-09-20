@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   ShieldCheck,
@@ -16,7 +16,9 @@ import {
   saveStoredMessages,
   generateSessionTitle,
 } from '@/lib/chatStorage';
+import { consumeSSEStream } from '@/lib/sse';
 import type { CitationResponse } from '@/types/api';
+
 
 interface ChatContainerProps {
   sessionId: string;
@@ -41,6 +43,10 @@ export function ChatContainer({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationResponse | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleCloseCitation = useCallback(() => {
+    setSelectedCitation(null);
+  }, []);
 
   // Sync state whenever active sessionId changes
   useEffect(() => {
@@ -139,34 +145,12 @@ export function ChatContainer({
     setMessages((prev) => [...prev, userMsg, initialAssistantMsg]);
     setIsLoading(true);
 
-    // Progressive status updates while backend RAG pipeline runs
-    const stepTimer1 = setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId && msg.isThinking
-            ? { ...msg, thinkingStep: 'Scanning pgvector cosine index across document chunks...' }
-            : msg
-        )
-      );
-    }, 1200);
-
-    const stepTimer2 = setTimeout(() => {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId && msg.isThinking
-            ? { ...msg, thinkingStep: 'Synthesizing verified grounded response with Gemini 3.5 Flash Lite...' }
-            : msg
-        )
-      );
-    }, 2400);
-
     try {
       // Prepare scoped document IDs if any selected
       const scopedDocIds =
         selectedDocIds.size > 0 ? Array.from(selectedDocIds) : undefined;
 
-      // Invoke backend /api/v1/query with active parameters and session_id
-      const queryResponse = await api.askQuestion({
+      const response = await api.askQuestionStream({
         question: questionText,
         document_ids: scopedDocIds,
         top_k: topK,
@@ -174,89 +158,127 @@ export function ChatContainer({
         session_id: sessionId,
       });
 
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
-
-      const fullAnswer = queryResponse.answer;
-      const isFallback =
-        !queryResponse.is_grounded ||
-        fullAnswer.toLowerCase().includes('not found in the provided document');
-
-      // If fallback, display immediately without streaming
-      if (isFallback) {
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  text: fullAnswer,
-                  isThinking: false,
-                  isGrounded: false,
-                  confidence: 0,
-                  citations: queryResponse.citations || [],
-                  isStreaming: false,
-                }
-              : msg
-          )
-        );
-        setIsLoading(false);
-        return;
+      if (!response.body) {
+        throw new Error('Streaming response body is unavailable or not supported.');
       }
 
-      // Switch to streaming text mode
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMsgId
-            ? {
-                ...msg,
-                text: '',
-                isThinking: false,
-                isGrounded: queryResponse.is_grounded,
-                confidence: queryResponse.confidence,
-                citations: [],
-                isStreaming: true,
-              }
-            : msg
-        )
-      );
+      const reader = response.body.getReader();
+      let accumulatedText = '';
+      let receivedCitations: CitationResponse[] = [];
+      let receivedConfidence = 0.85;
+      let receivedIsGrounded = true;
 
-      // Natural token-by-token typewriter effect
-      const tokens = fullAnswer.split(' ');
-      let currentWordIndex = 0;
-      let streamedText = '';
-
-      const streamInterval = setInterval(() => {
-        if (currentWordIndex < tokens.length) {
-          const word = tokens[currentWordIndex];
-          streamedText += (currentWordIndex > 0 ? ' ' : '') + word;
-          currentWordIndex++;
-
+      await consumeSSEStream(reader, {
+        onStatus: (data) => {
+          let stepMsg = data.message;
+          if (!stepMsg) {
+            if (data.step === 'embedding') stepMsg = 'Generating query embedding vector...';
+            else if (data.step === 'retrieving') stepMsg = 'Scanning pgvector cosine index across document chunks...';
+            else if (data.step === 'generating') stepMsg = 'Synthesizing verified grounded response with Gemini 3.5 Flash Lite...';
+            else if (data.step === 'validating_citations') stepMsg = 'Extracting and verifying source citations...';
+          }
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMsgId ? { ...msg, text: streamedText } : msg
+              msg.id === assistantMsgId && msg.isThinking
+                ? { ...msg, thinkingStep: stepMsg }
+                : msg
             )
           );
-        } else {
-          clearInterval(streamInterval);
-          // Stream completed: snap citations into place and mark streaming false
+        },
+
+        onToken: (data) => {
+          accumulatedText += data.delta;
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
                     ...msg,
-                    text: fullAnswer,
-                    citations: queryResponse.citations || [],
+                    isThinking: false,
+                    isStreaming: true,
+                    text: accumulatedText,
+                  }
+                : msg
+            )
+          );
+        },
+
+        onGateRejected: (data) => {
+          accumulatedText = data.fallback_answer;
+          receivedIsGrounded = false;
+          receivedConfidence = 0.0;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    isThinking: false,
                     isStreaming: false,
+                    isGrounded: false,
+                    confidence: 0,
+                    text: data.fallback_answer,
+                    citations: [],
+                  }
+                : msg
+            )
+          );
+        },
+
+        onCitations: (data) => {
+          receivedCitations = data.citations || [];
+          receivedConfidence = data.confidence;
+          receivedIsGrounded = data.is_grounded;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    citations: receivedCitations,
+                    confidence: receivedConfidence,
+                    isGrounded: receivedIsGrounded,
+                  }
+                : msg
+            )
+          );
+        },
+
+        onDone: (data) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    isThinking: false,
+                    isStreaming: false,
+                    text: accumulatedText || 'Not found in the provided document(s).',
+                    citations: receivedCitations,
+                    confidence: data.confidence !== undefined ? data.confidence : receivedConfidence,
+                    isGrounded: data.is_grounded !== undefined ? data.is_grounded : receivedIsGrounded,
                   }
                 : msg
             )
           );
           setIsLoading(false);
-        }
-      }, 40);
+        },
+
+        onError: (data) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMsgId
+                ? {
+                    ...msg,
+                    isThinking: false,
+                    isStreaming: false,
+                    text: `Error during answer generation: ${data.message}`,
+                    isGrounded: false,
+                    confidence: 0,
+                  }
+                : msg
+            )
+          );
+          setIsLoading(false);
+        },
+      });
     } catch (err: unknown) {
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
       const errorMsg =
         err instanceof Error
           ? err.message
@@ -273,10 +295,13 @@ export function ChatContainer({
         isStreaming: false,
       };
 
-      setMessages((prev) => [...prev, errorAssistantMsg]);
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === assistantMsgId ? errorAssistantMsg : msg))
+      );
       setIsLoading(false);
     }
   };
+
 
   const handleClearChat = () => {
     if (confirm('Clear the current conversation thread?')) {
@@ -292,7 +317,7 @@ export function ChatContainer({
       {/* Citation Popover Modal */}
       <CitationModal
         citation={selectedCitation}
-        onClose={() => setSelectedCitation(null)}
+        onClose={handleCloseCitation}
       />
 
       {/* Chat Thread Header */}

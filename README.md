@@ -25,9 +25,12 @@ Scanity allows organizations to ingest complex, multi-page PDF documents and que
 - **High-Performance HNSW Indexing:** Sub-5ms approximate nearest-neighbor retrieval via Hierarchical Navigable Small World graphs using `vector_cosine_ops`.
 - **Monotonic Primary Keys (RFC 9562 UUIDv7):** Combines 48-bit millisecond timestamps with entropy to maintain sequential B-tree inserts and eliminate index fragmentation.
 - **Anti-Hallucination Gate:** Rejects low-similarity queries (< 0.70 cosine similarity) before LLM synthesis, returning deterministic fallback responses without consuming generation tokens.
+- **Real-Time SSE Token Streaming:** Sub-500ms time-to-first-token streaming via FastAPI `StreamingResponse` and browser-native `ReadableStream`, using a two-phase strategy to deliver real-time tokens followed by validated post-hoc structured citations.
+- **Visual PDF Citation Inspector:** Interactive tab switcher in citation cards allowing users to toggle between verified text snippets and on-demand rendered 200 DPI PDF page images via PyMuPDF with complete zoom controls (+, -, reset).
 - **Dual-Layer Conversation History:** Instantaneous (0ms) client-side `localStorage` caching paired with durable PostgreSQL audit tables recording questions, answers, confidence scores, and citations keyed by session ID.
 - **Dynamic Auto-Titling:** Conversation sessions automatically derive readable titles from the user's initial prompt in real time.
 - **Modern Next.js 15 App Router:** Clean separation into a public landing page (with Skiper-style card stacking scroll), authentication (with demo accounts and registration), and an enterprise workspace with multi-file uploads and admin parameter sliders.
+
 
 ---
 

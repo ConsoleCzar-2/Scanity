@@ -352,3 +352,89 @@ Purges all query records, answers, and associated query citations for a specific
 curl -X DELETE "http://localhost:8000/api/v1/query/sessions/01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27"
 ```
 
+---
+
+### 3.10 Real-Time Grounded Q&A Streaming (Server-Sent Events)
+Streams natural-language grounded answer tokens in real time via Server-Sent Events (SSE). Emits live pipeline status transitions (`embedding`, `retrieving`, `generating`, `validating_citations`), token text deltas, anti-hallucination gate rejections, and verified citations upon stream completion.
+
+* **Method:** `POST`
+* **Path:** `/api/v1/query/stream`
+* **Tags:** `Query`
+* **Authentication:** None
+* **Headers:** `Accept: text/event-stream`
+* **Request Body:**
+```json
+{
+  "question": "What is the carrier frequency of the RF receiver?",
+  "document_ids": ["01a071df-5994-70a2-af14-618727cb1a4f"],
+  "top_k": 5,
+  "threshold": 0.70,
+  "session_id": "01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27"
+}
+```
+
+#### SSE Event Sequence (200 OK — text/event-stream):
+```text
+event: status
+data: {"step": "embedding", "message": "Generating query embedding vector..."}
+
+event: status
+data: {"step": "retrieving", "message": "Scanning pgvector for nearest chunk neighbors..."}
+
+event: status
+data: {"step": "generating", "message": "Synthesizing grounded response..."}
+
+event: token
+data: {"delta": "The"}
+
+event: token
+data: {"delta": " carrier"}
+
+event: token
+data: {"delta": " frequency"}
+
+event: status
+data: {"step": "validating_citations", "message": "Extracting and validating source citations..."}
+
+event: citations
+data: {"citations": [{"chunk_id": "01a0755a-f69a-74e9-8940-88bc19625c68", "document_id": "01a0755a-f65b-7c0e-9ac0-20c3a7d3ae27", "original_filename": "rf_module.pdf", "page_number": 3, "snippet": "The receiver operates at a nominal carrier frequency of 433.92 MHz...", "relevance_score": 0.88}], "confidence": 0.94, "is_grounded": true}
+
+event: done
+data: {"query_id": "01a0755a-f6d6-7e92-8d91-9e90d59125e8", "is_grounded": true, "confidence": 0.94, "created_at": "2026-09-20T11:30:00Z"}
+```
+
+#### Curl Command:
+```powershell
+curl -N -X POST "http://localhost:8000/api/v1/query/stream" -H "Content-Type: application/json" -d '{\"question\": \"What is the carrier frequency?\", \"threshold\": 0.70}'
+```
+
+---
+
+### 3.11 Rendered PDF Page Image
+Rasterizes on-demand a specific page of an uploaded PDF document into a high-resolution PNG image for visual citation verification.
+
+* **Method:** `GET`
+* **Path:** `/api/v1/documents/{id}/pages/{page_number}/image`
+* **Tags:** `Documents`
+* **Authentication:** None
+* **Path Parameters:**
+  * `id: UUID` - Document identifier
+  * `page_number: int` - 1-indexed source PDF page number
+* **Query Parameters:**
+  * `dpi: int` - Rasterization resolution in dots per inch (default: 150, min: 72, max: 300)
+
+#### Response (200 OK — image/png):
+Returns raw PNG binary image stream with caching headers:
+* `Content-Type: image/png`
+* `Cache-Control: public, max-age=86400, immutable`
+
+#### Error Responses:
+* `400 Bad Request`: If `page_number` is 0 or exceeds the document's total page count.
+* `404 Not Found`: If the document record or underlying stored PDF file does not exist.
+
+#### Curl Command:
+```powershell
+curl -o page_1.png "http://localhost:8000/api/v1/documents/01a071df-5994-70a2-af14-618727cb1a4f/pages/1/image?dpi=150"
+```
+
+

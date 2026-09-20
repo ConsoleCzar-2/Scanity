@@ -108,6 +108,44 @@ export const api = {
   },
 
   /**
+   * Generates the API URL to fetch a rendered PNG page image for visual citation verification.
+   */
+  getDocumentPageImageUrl(documentId: string, pageNumber: number, dpi: number = 150): string {
+    return `${API_BASE_URL}/documents/${documentId}/pages/${pageNumber}/image?dpi=${dpi}`;
+  },
+
+  /**
+   * Initiates an SSE streaming question request to the backend.
+   * Returns the raw fetch Response whose .body can be consumed via ReadableStream.
+   */
+  async askQuestionStream(req: QueryRequest, signal?: AbortSignal): Promise<Response> {
+    const res = await fetch(`${API_BASE_URL}/query/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(req),
+      signal,
+    });
+
+    if (!res.ok) {
+      let errorMsg = `Streaming request failed with status ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson && typeof errJson === 'object' && 'detail' in errJson) {
+          errorMsg = String((errJson as { detail: unknown }).detail);
+        }
+      } catch {
+        // use fallback error message
+      }
+      throw new ApiError(errorMsg, res.status);
+    }
+
+    return res;
+  },
+
+  /**
    * Sends a user question to the grounded RAG generation engine.
    */
   async askQuestion(req: QueryRequest): Promise<QueryResponse> {
@@ -139,4 +177,5 @@ export const api = {
     });
   },
 };
+
 

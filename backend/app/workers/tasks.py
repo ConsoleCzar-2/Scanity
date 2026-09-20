@@ -4,7 +4,7 @@ import traceback
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
@@ -68,7 +68,11 @@ async def _async_process_pdf(document_id: str, storage_path: str) -> dict:
                     f"{ingestion_result.page_count} pages, {ingestion_result.total_chunks} embedded chunks."
                 )
 
-                # 5. Persist DocumentChunk records with 768-dim embeddings
+                # 5. Persist DocumentChunk records with 768-dim embeddings (idempotent overwrite)
+                await session.execute(
+                    delete(DocumentChunk).where(DocumentChunk.document_id == doc_uuid)
+                )
+
                 chunks_to_insert = [
                     DocumentChunk(
                         document_id=doc_uuid,

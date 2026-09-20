@@ -18,10 +18,12 @@ The application is structured into clean, dedicated routes via the Next.js App R
 
 ## 2. Key Features
 
+- **Real-Time SSE Token Streaming (`lib/sse.ts` & `components/chat/ChatContainer.tsx`):** Sub-500ms time-to-first-token streaming via FastAPI `StreamingResponse` and browser-native `ReadableStreamDefaultReader`, delivering live pipeline status progression (`embedding` -> `retrieving` -> `generating` -> `validating_citations`), real-time token typewriter synthesis, and grounded post-hoc citations.
+- **Visual PDF Citation Inspector (`components/chat/CitationModal.tsx`):** Interactive dual-tab modal switcher allowing users to toggle between verified verbatim text excerpts and on-demand 150 DPI rendered PDF page images via PyMuPDF with full zoom controls (+, -, reset, open-in-tab).
+- **Inline Numbered Citation Badges (`components/chat/MessageItem.tsx`):** Wikipedia-style numbered superscript pills (`[1]`, `[2]`) replacing raw UUID hashes in assistant responses, clickable to open the CitationModal.
 - **Skiper UI Card-Stacking Dynamics (`components/landing/LandingPage.tsx`):** Sticky card positioning (`sticky top-28`) and scroll progress calculations that smoothly stack, scale down, and rotate core capability cards on scroll.
 - **Admin Modify Parameters Panel (`components/layout/SidebarDrawer.tsx`):** Compact slider controls with distinct track styling and min/max boundary labels for tuning relevance threshold (0.50 to 0.95) and top-k (1 to 20).
 - **Multi-File PDF Ingestion (`components/upload/UploadDropzone.tsx`):** Batch selection and multi-file drag-and-drop support with client-side MIME (`application/pdf`) and 50MB size validation.
-- **Progressive Stepper & Natural Typing (`components/chat/ChatContainer.tsx`):** Renders immediate assistant feedback during backend RAG stages, followed by natural token-by-token typewriter playback and verified citation popovers.
 - **Hydration Safety (`app/chat/page.tsx` & `lib/auth.ts`):** Utilizes React 19 `useSyncExternalStore` paired with a referentially stable snapshot cache, completely preventing server/client hydration mismatch errors.
 - **Role-Based Access Control (`lib/auth.ts`):** Admin accounts can access parameter tuning and system telemetry health probes. Self-registered accounts are restricted to customer privileges.
 
@@ -84,18 +86,19 @@ frontend/
 │   │   ├── DocumentList.tsx    # Catalog view with adaptive polling & scoping
 │   │   └── StatusBadge.tsx     # Color-coded state pills
 │   ├── chat/
-│   │   ├── ChatContainer.tsx   # Message thread & progressive stepper
-│   │   ├── MessageItem.tsx     # Assistant card & confidence meter
+│   │   ├── ChatContainer.tsx   # Message thread & real-time SSE token streaming
+│   │   ├── MessageItem.tsx     # Assistant card, confidence meter, & [1] citation badges
 │   │   ├── QueryInput.tsx      # Prompt input bar with scoping tags
-│   │   ├── CitationChip.tsx    # Page number & relevance pill badge
-│   │   ├── CitationModal.tsx   # Verbatim PDF chunk excerpt popover
+│   │   ├── CitationChip.tsx    # Numbered page badge & relevance pill
+│   │   ├── CitationModal.tsx   # Verbatim snippet & rendered PDF page view with zoom
 │   │   └── FallbackCard.tsx    # Anti-hallucination refusal card
 │   └── admin/
 │       └── AdminLogsModal.tsx  # Live multi-service latency & telemetry dialog
 ├── lib/
-│   ├── api.ts                  # Typed HTTP client
+│   ├── api.ts                  # Typed HTTP client & streaming fetch methods
 │   ├── auth.ts                 # Session store with useSyncExternalStore
 │   ├── constants.ts            # Configuration constants
+│   ├── sse.ts                  # Zero-dependency SSE stream decoder & dispatch
 │   └── utils.ts                # Formatting utilities
 └── types/
     └── api.ts                  # TypeScript interfaces matching backend models

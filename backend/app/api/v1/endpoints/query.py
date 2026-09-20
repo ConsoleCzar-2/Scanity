@@ -16,11 +16,14 @@ from app.schemas.query import (
     QuerySearchRequest,
     RetrievalResult,
 )
+from fastapi.responses import StreamingResponse
 from app.services.generation import FALLBACK_ANSWER, GenerationService
 from app.services.retrieval import RetrievalService
+from app.services.streaming import stream_grounded_answer
 
 logger = logging.getLogger("scanity.api.query")
 router = APIRouter()
+
 
 
 @router.post(
@@ -148,6 +151,37 @@ async def ask_question(
 
 
 @router.post(
+    "/stream",
+    summary="Streaming Grounded Document Q&A via SSE",
+    description=(
+        "Streams natural-language grounded answer tokens in real-time via Server-Sent Events (SSE). "
+        "Emits progress status, token deltas, anti-hallucination gate rejections, and verified citations."
+    ),
+)
+async def ask_question_stream(
+    request: QueryRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    return StreamingResponse(
+        stream_grounded_answer(
+            question=request.question,
+            document_ids=request.document_ids,
+            top_k=request.top_k,
+            threshold=request.threshold,
+            session_id=request.session_id,
+            db=db,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post(
+
     "/search",
     response_model=RetrievalResult,
     summary="Vector Search & Relevance Gate Inspection",

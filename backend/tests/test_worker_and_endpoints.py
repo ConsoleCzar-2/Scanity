@@ -92,6 +92,7 @@ async def test_full_document_lifecycle():
         # -------------------------------------------------------------
         # Test 3: Verify PostgreSQL pgvector Chunks & Embeddings
         # -------------------------------------------------------------
+        await asyncio.sleep(0.2)
         async with AsyncSessionLocal() as session:
             chunks_result = await session.execute(
                 select(DocumentChunk).where(DocumentChunk.document_id == doc_id).order_by(DocumentChunk.chunk_index)

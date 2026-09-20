@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -30,6 +30,20 @@ import { getCurrentUser } from '@/lib/auth';
 import { StackedCards } from '@/components/landing/StackedCards';
 import type { HealthResponse } from '@/types/api';
 
+function subscribeAuth(callback: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('storage', callback);
+  return () => window.removeEventListener('storage', callback);
+}
+
+function getClientAuth(): boolean {
+  return Boolean(getCurrentUser());
+}
+
+function getServerAuth(): boolean {
+  return false;
+}
+
 interface LandingPageProps {
   health?: HealthResponse | null;
   healthLoading?: boolean;
@@ -41,9 +55,7 @@ export function LandingPage({
 }: LandingPageProps) {
   const router = useRouter();
   const [scrollY, setScrollY] = useState(0);
-  const [isLoggedIn] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? Boolean(getCurrentUser()) : false
-  );
+  const isLoggedIn = useSyncExternalStore(subscribeAuth, getClientAuth, getServerAuth);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -60,6 +72,7 @@ export function LandingPage({
       router.push('/login');
     }
   };
+
 
   // Scroll dynamics: Hero section sinks and fades away into background as user scrolls down
   const heroOpacity = Math.max(0, 1 - scrollY / 280);
@@ -250,7 +263,7 @@ export function LandingPage({
               rel="noreferrer"
               className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors"
             >
-              <span>Made with ❤️ by Abhirup Saha</span>
+              <span>Crafted by Abhirup Saha</span>
             </a>
           </div>
 

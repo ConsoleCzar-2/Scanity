@@ -1,11 +1,13 @@
+import asyncio
 import json
 import logging
 import re
-from typing import List, Optional, Tuple
+from typing import AsyncGenerator, List, Optional, Tuple
 
 from app.core.config import settings
 from app.schemas.query import (
     CitationResponse,
+    CitationsExtractionSchema,
     GroundedAnswerSchema,
     RawCitation,
     RetrievedChunk,
@@ -67,7 +69,7 @@ class GenerationService:
             "CRITICAL CONSTRAINTS:\n"
             "1. Groundedness: Answer ONLY using facts directly mentioned in the excerpts below. Do NOT extrapolate, speculate, or bring in outside knowledge.\n"
             "2. Fallback: If the provided excerpts do not contain the answer, set 'answer' to 'Not found in the provided document(s).', set 'citations' to an empty list [], and set 'confidence' to 0.0.\n"
-            "3. Citations: For every factual claim in your answer, cite the exact chunk_id and page_number from which the claim was obtained.\n"
+            "3. Citations: In the JSON citations list, provide the exact chunk_id and page_number. In the answer text, use clean bracketed numbers like [1], [2] referring to excerpt numbers. Do NOT write raw UUIDs in the answer text.\n"
             "4. Structured Format: You MUST output strictly valid JSON matching the specified schema."
         )
 
@@ -75,6 +77,7 @@ class GenerationService:
         for idx, chunk in enumerate(chunks, start=1):
             block = (
                 f"--- BEGIN DOCUMENT EXCERPT [{idx}] ---\n"
+                f"Excerpt Index: [{idx}]\n"
                 f"Chunk ID: {chunk.chunk_id}\n"
                 f"Document: {chunk.document_filename}\n"
                 f"Page: {chunk.page_number}\n"
@@ -87,7 +90,7 @@ class GenerationService:
         user_content = (
             f"DOCUMENT EXCERPTS:\n\n{context_str}\n\n"
             f"USER QUESTION:\n{question}\n\n"
-            "Produce a factual, grounded answer with exact chunk_id citations conforming strictly to the JSON schema."
+            "Produce a factual, grounded answer with clean bracketed numbered citations [1], [2] in the text, and exact chunk_ids in the citations list conforming strictly to the JSON schema."
         )
 
         return system_instruction, user_content
@@ -113,9 +116,11 @@ class GenerationService:
                 seen_chunks.add(cit_id)
                 chunk = candidate_map[cit_id]
 
-                # Extract verbatim snippet (first 250 characters)
-                raw_text = chunk.content.strip()
-                snippet = raw_text[:250] + ("..." if len(raw_text) > 250 else "")
+                # Extract cleaned verbatim snippet (strip presentation bullet artifacts / PUA glyphs)
+                clean_lines = [self._clean_text(line) for line in chunk.content.split("\n")]
+                substantive_lines = [l for l in clean_lines if l.strip()]
+                clean_text = "\n".join(substantive_lines)
+                snippet = clean_text[:300] + ("..." if len(clean_text) > 300 else "")
 
                 validated.append(
                     CitationResponse(
@@ -136,11 +141,33 @@ class GenerationService:
 
     def _clean_text(self, text: str) -> str:
         """Removes presentation bullet artifacts and normalizes whitespace."""
-        # Replace common presentation font bullet characters (e.g. \uf071, \uf0d8)
-        cleaned = re.sub(r"[\uf000-\uf8ff]", "", text)
+        # Replace common presentation font bullet characters (e.g. \ue000-\uf8ff)
+        cleaned = re.sub(r"[\ue000-\uf8ff]", "", text)
         cleaned = re.sub(r"[•·▪▫►✔→\t]+", " ", cleaned)
         cleaned = re.sub(r" +", " ", cleaned)
         return cleaned.strip()
+
+    def _normalize_inline_citations(
+        self, text: str, candidate_chunks: List[RetrievedChunk]
+    ) -> str:
+        """
+        Normalizes any raw UUID citations [uuid] into clean numbered citations [1], [2].
+        """
+        chunk_map = {str(c.chunk_id).lower(): idx for idx, c in enumerate(candidate_chunks, start=1)}
+
+        def replacer(match: re.Match) -> str:
+            raw_id = match.group(1).lower()
+            if raw_id in chunk_map:
+                return f"[{chunk_map[raw_id]}]"
+            return ""
+
+        # Matches [uuid] or [chunk_id]
+        cleaned = re.sub(
+            r"\[([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\]",
+            replacer,
+            text,
+        )
+        return re.sub(r" +", " ", cleaned).strip()
 
     def _mock_generate(
         self,
@@ -312,7 +339,8 @@ class GenerationService:
                 )
                 return self._mock_generate(question, candidate_chunks)
 
-            return raw_answer, validated_citations, confidence, True
+            clean_answer = self._normalize_inline_citations(raw_answer, candidate_chunks)
+            return clean_answer, validated_citations, confidence, True
 
         except Exception as err:
             logger.warning(
@@ -320,3 +348,159 @@ class GenerationService:
                 "Falling back to smart grounded chunk synthesis from candidate chunks."
             )
             return self._mock_generate(question, candidate_chunks)
+
+    async def generate_answer_stream(
+        self,
+        question: str,
+        candidate_chunks: List[RetrievedChunk],
+    ) -> AsyncGenerator[str, None]:
+        """
+        Phase 1: Streams natural-language grounded answer tokens incrementally.
+        Yields text deltas as they arrive from Gemini's streaming API, or word-by-word in mock mode.
+        """
+        if not candidate_chunks:
+            yield FALLBACK_ANSWER
+            return
+
+        if self.use_mock or self.client is None:
+            mock_answer, _, _, _ = self._mock_generate(question, candidate_chunks)
+            words = mock_answer.split(" ")
+            for i, word in enumerate(words):
+                prefix = "" if i == 0 else " "
+                yield prefix + word
+                await asyncio.sleep(0.02)
+            return
+
+        _, context_str = self.build_prompt(question, candidate_chunks)
+        streaming_instruction = (
+            "You are an enterprise document question-answering assistant. "
+            "Your task is to answer the user's question strictly and exclusively based on the provided document excerpts.\n\n"
+            "CRITICAL CONSTRAINTS:\n"
+            "1. Groundedness: Answer ONLY using facts directly mentioned in the excerpts below. Do NOT extrapolate, speculate, or bring in outside knowledge.\n"
+            "2. Fallback: If the provided excerpts do not contain the answer, respond ONLY with 'Not found in the provided document(s).'\n"
+            "3. Format: Provide a clear, well-structured, direct natural language answer. Do not output JSON or schema blocks.\n"
+            "4. Inline Citations: Cite supporting excerpts with clean bracketed numbers like [1], [2] referencing the Excerpt Index at the end of relevant statements (e.g. '... developed in the 1970s [1]'). Never output raw UUID strings or chunk hashes."
+        )
+
+        streaming_user_content = (
+            f"DOCUMENT EXCERPTS:\n\n{context_str}\n\n"
+            f"USER QUESTION:\n{question}\n\n"
+            "Provide a direct, factual natural-language answer grounded strictly in the excerpts above. "
+            "Cite supporting excerpts using bracketed numbers like [1], [2]. Do NOT write raw UUID strings."
+        )
+
+        try:
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=streaming_instruction,
+                temperature=0.0,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            )
+
+            response_stream = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=streaming_user_content,
+                config=config,
+            )
+
+            for chunk in response_stream:
+                if chunk.text:
+                    yield chunk.text
+
+        except Exception as err:
+            logger.warning(
+                f"Streaming error with Gemini API ({err}). "
+                "Falling back to mock grounded streaming."
+            )
+            mock_answer, _, _, _ = self._mock_generate(question, candidate_chunks)
+            words = mock_answer.split(" ")
+            for i, word in enumerate(words):
+                prefix = "" if i == 0 else " "
+                yield prefix + word
+                await asyncio.sleep(0.02)
+
+    async def extract_structured_citations(
+        self,
+        question: str,
+        answer_text: str,
+        candidate_chunks: List[RetrievedChunk],
+    ) -> Tuple[List[CitationResponse], float, bool]:
+        """
+        Phase 2: Extracts structured citations and confidence score for the streamed answer.
+        Uses structured schema output and validates against retrieved candidate chunks.
+        """
+        if not candidate_chunks or FALLBACK_ANSWER.lower() in answer_text.lower():
+            return [], 0.0, False
+
+        if self.use_mock or self.client is None:
+            _, citations, confidence, is_grounded = self._mock_generate(question, candidate_chunks)
+            return citations, confidence, is_grounded
+
+        _, context_str = self.build_prompt(question, candidate_chunks)
+        extraction_prompt = (
+            f"DOCUMENT EXCERPTS:\n\n{context_str}\n\n"
+            f"USER QUESTION:\n{question}\n\n"
+            f"GENERATED ANSWER:\n{answer_text}\n\n"
+            "Extract all chunk_id citations and page numbers supporting claims in the generated answer. "
+            "Assign an overall factual confidence score (0.0 to 1.0) indicating degree of support."
+        )
+
+        system_instruction = (
+            "You are an expert citation validator. "
+            "Given the document excerpts and an answer, identify which excerpts support the statements in the answer. "
+            "Output strictly valid JSON matching the schema."
+        )
+
+        try:
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=CitationsExtractionSchema,
+                temperature=0.0,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            )
+
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=extraction_prompt,
+                config=config,
+            )
+
+            raw_data = None
+            if hasattr(response, "parsed") and response.parsed:
+                raw_data = response.parsed
+            elif hasattr(response, "text") and response.text:
+                raw_data = json.loads(response.text)
+
+            if not raw_data:
+                logger.warning("Empty citation response from Gemini API; using candidate chunk fallback.")
+                _, citations, confidence, is_grounded = self._mock_generate(question, candidate_chunks)
+                return citations, confidence, is_grounded
+
+            if isinstance(raw_data, dict):
+                parsed_schema = CitationsExtractionSchema(**raw_data)
+            else:
+                parsed_schema = raw_data
+
+            raw_citations = parsed_schema.citations
+            confidence = float(parsed_schema.confidence)
+
+            validated_citations = self.validate_citations(raw_citations, candidate_chunks)
+            if not validated_citations:
+                logger.warning("Post-hoc validator discarded citations; using candidate chunk fallback.")
+                _, citations, confidence, is_grounded = self._mock_generate(question, candidate_chunks)
+                return citations, confidence, is_grounded
+
+            return validated_citations, confidence, True
+
+        except Exception as err:
+            logger.warning(
+                f"Citation extraction error with Gemini API ({err}). "
+                "Falling back to candidate chunk citations."
+            )
+            _, citations, confidence, is_grounded = self._mock_generate(question, candidate_chunks)
+            return citations, confidence, is_grounded
+

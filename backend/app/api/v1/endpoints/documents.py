@@ -2,7 +2,7 @@ import logging
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,11 +16,13 @@ from app.schemas.document import (
     DocumentStatusResponse,
     DocumentUploadResponse,
 )
+from app.services.ingestion import PDFParser
 from app.services.storage import get_storage_service
 from app.workers.tasks import process_pdf_task
 
 logger = logging.getLogger("scanity.api.documents")
 router = APIRouter()
+
 
 
 @router.post(
@@ -148,7 +150,66 @@ async def list_documents(
     )
 
 
+@router.get(
+    "/{id}/pages/{page_number}/image",
+    summary="Get Rendered PDF Page Image",
+    description="Renders a specific page of an uploaded PDF document as a PNG image for visual citation verification.",
+    responses={
+        200: {
+            "content": {"image/png": {}},
+            "description": "PNG image of the rendered PDF page.",
+        }
+    },
+)
+async def get_document_page_image(
+    id: uuid.UUID,
+    page_number: int,
+    dpi: int = Query(150, ge=72, le=300, description="Rasterization resolution in DPI"),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    result = await db.execute(select(Document).where(Document.id == id))
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document with ID {id} not found.",
+        )
+
+    storage_service = get_storage_service()
+    try:
+        file_bytes = storage_service.read_bytes(document.storage_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stored document file for ID {id} not found on disk.",
+        )
+
+    try:
+        png_bytes = PDFParser.render_page_image(file_bytes, page_number=page_number, dpi=dpi)
+    except IndexError as idx_err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(idx_err),
+        )
+    except Exception as render_err:
+        logger.error(f"Failed to render page {page_number} for doc {id}: {render_err}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to render PDF page: {str(render_err)}",
+        )
+
+    return Response(
+        content=png_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "public, max-age=86400, immutable",
+        },
+    )
+
+
 @router.delete(
+
     "/{id}",
     summary="Delete Document",
     description="Deletes a document from the database (cascading to all chunks and embeddings) and removes it from storage.",

@@ -110,7 +110,8 @@ backend/
     │   ├── ingestion.py          # PDFParser, RecursiveTokenChunker, GeminiEmbeddingService (L2 Norm)
     │   ├── storage.py            # BaseStorageService, LocalStorageService, GCSStorageService
     │   ├── retrieval.py          # KNN vector similarity search & relevance threshold gate
-    │   └── generation.py         # Grounded LLM synthesis & post-hoc citation integrity validator
+    │   ├── generation.py         # Grounded LLM synthesis & post-hoc citation integrity validator
+    │   └── streaming.py          # SSE wire formatter & real-time streaming pipeline orchestrator
     └── workers/                  # Asynchronous task processing (Celery)
         ├── __init__.py           # Exported celery_app and tasks
         ├── celery_app.py         # Celery configuration with Redis broker
@@ -164,3 +165,13 @@ backend/
 7. **Post-Hoc Citation Validation:** The citation validator verifies that every cited `chunk_id` mathematically exists within the candidate set retrieved from PostgreSQL. Unverified or fabricated chunk IDs are stripped. If no valid citations remain, the answer is suppressed and falls back to `"Not found in the provided document(s)."`.
 8. **Audit Persistence:** The query, `session_id`, groundedness flag, confidence score, document references, and verified citations (with rank and relevance score) are committed atomically to PostgreSQL tables `queries`, `query_documents`, and `query_citations`.
 9. **Dual-Layer Conversation History:** Queries are instantly cached on the client via `localStorage` for zero-latency UI re-rendering, and query history can be queried or purged at any time via `GET /api/v1/query/history?session_id=...` and `DELETE /api/v1/query/sessions/{session_id}`.
+
+### 4.3 Real-Time Server-Sent Events (SSE) & Visual PDF Citation Rendering
+
+1. **Two-Phase Generation Strategy:** Gemini's structured output mode generates JSON atomically, preventing token streaming. Scanity decouples this into two phases:
+   - **Phase 1 (Streaming)**: Streams natural language tokens via `client.models.generate_content_stream()` and Starlette `StreamingResponse`.
+   - **Phase 2 (Structured Extraction)**: Once token synthesis completes, extracts structured chunk citations with `CitationsExtractionSchema` and runs post-hoc candidate set validation.
+2. **SSE Event Lifecycle:** The backend yields structured events (`status`, `token`, `gate_rejected`, `citations`, `done`, `error`) consumed by the browser's `ReadableStreamDefaultReader` in `frontend/lib/sse.ts`.
+3. **On-Demand PDF Page Image Rendering:** PyMuPDF renders requested cited pages into 200 DPI PNG images via `GET /api/v1/documents/{id}/pages/{page}/image`. Images are cached by the browser (`Cache-Control: public, max-age=86400, immutable`).
+4. **CitationModal Tab Switcher:** Users toggle between verbatim text quotes and the rendered visual PDF page layout with complete zoom in, zoom out, reset, and open-in-tab controls.
+
